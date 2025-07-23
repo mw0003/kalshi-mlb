@@ -220,22 +220,39 @@ if today_balance is None or yesterday_balance is None or days_since_start <= 0:
 pnl = today_balance - yesterday_balance
 pct_change = (pnl / yesterday_balance) * 100
 
-# CAGR
-cagr = (today_balance / start_balance) ** (1 / days_since_start) - 1
+# CAGR (normalized for capital injection)
+actual_total_capital = start_balance + 1100  # $850 + $1100 = $1950 (July 8th injection)
+cagr = (today_balance / actual_total_capital) ** (1 / days_since_start) - 1
 
-# Simulate distribution with 1.3% fee per trade
+# Simulate distribution with 1.3% fee per trade and July 8th capital injection
 decimal_odds = 100 / 186 + 1
 break_even_win_prob = 1 / decimal_odds
 true_win_prob = break_even_win_prob * 1.06
 b = decimal_odds - 1
 p = true_win_prob
+
+expected_value_per_dollar = (p * b) - ((1 - p) * 1) - 0.013
+print(f"Expected Value per $1 bet: ${expected_value_per_dollar:.4f}")
+
 kelly_fraction = (b * p - (1 - p)) / b
 adjusted_kelly = 0.75 * kelly_fraction
+
+capital_injection_day = 24
+capital_injection_amount = 1100
+
 np.random.seed(42)
 final_bankrolls = []
+total_capital_injected = []
+
 for _ in range(10000):
     bank = start_balance
-    for _ in range(days_since_start):
+    total_injected = 0
+    
+    for day in range(days_since_start):
+        if day == capital_injection_day:
+            bank += capital_injection_amount
+            total_injected += capital_injection_amount
+            
         day_bank = bank
         for _ in range(12):
             wager = adjusted_kelly * day_bank
@@ -244,16 +261,25 @@ for _ in range(10000):
                 bank += wager * b - fee
             else:
                 bank -= wager + fee
+                
     final_bankrolls.append(bank)
+    total_capital_injected.append(total_injected)
 
-sim_cagrs_raw = (np.array(final_bankrolls) / start_balance)
-sim_cagrs = np.full_like(sim_cagrs_raw, np.nan)
-valid_mask = sim_cagrs_raw > 0
-sim_cagrs[valid_mask] = sim_cagrs_raw[valid_mask] ** (1 / days_since_start) - 1
-percentile = np.sum(sim_cagrs <= cagr) / np.sum(~np.isnan(sim_cagrs)) * 100
+final_bankrolls = np.array(final_bankrolls)
+total_capital_injected = np.array(total_capital_injected)
+total_capital_base = start_balance + total_capital_injected
 
-# Total return since start
-total_return_pct = (today_balance / start_balance - 1) * 100
+sim_returns_raw = (final_bankrolls / total_capital_base)
+sim_cagrs = np.full_like(sim_returns_raw, np.nan)
+valid_mask = sim_returns_raw > 0
+sim_cagrs[valid_mask] = sim_returns_raw[valid_mask] ** (1 / days_since_start) - 1
+
+actual_cagr_normalized = cagr
+percentile = np.sum(sim_cagrs <= actual_cagr_normalized) / np.sum(~np.isnan(sim_cagrs)) * 100
+
+# Total return since start (normalized for capital injection)
+total_return_pct_raw = (today_balance / start_balance - 1) * 100
+total_return_pct_normalized = (today_balance / actual_total_capital - 1) * 100
 
 # MLB table for email
 mlb_df = summarize_mlb()
@@ -304,7 +330,7 @@ email_body = f"""
     <div class="metric">{'<br>'.join(open_summary) if open_summary else 'None'}</div>
 
     <div class="section-title">📈 Performance Since 6/14/25 ({days_since_start} Days)</div>
-    <div class="metric">Total Return: <b>{total_return_pct:.2f}%</b></div>
+    <div class="metric">Total Return: <b>{total_return_pct_normalized:.2f}%</b></div>
     <div class="metric">Daily CAGR: <b>{cagr * 100:.2f}%</b></div>
     <div class="metric">Percentile Rank vs Strategy (w/ 1.3% Fee/Trade): <b>{percentile:.1f}%</b></div>
     <div class="metric"><i>Simulation assumes 12 trades/day with 1.3% fee on each trade.</i></div>
