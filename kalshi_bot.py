@@ -155,6 +155,60 @@ def build_opponent_map():
         matchup[home] = away
     return matchup
 
+
+def devig_fanduel_odds(fanduel_odds_dict, opponent_map):
+    """
+    Remove vig from FanDuel moneyline odds using normalization method.
+    
+    Formula:
+    1. Convert American odds to implied probabilities
+    2. For each game, normalize probabilities so they sum to 1.0 (removing vig)
+    3. Convert back to fair decimal odds
+    
+    American to implied probability: 
+    - Positive odds (+150): 100 / (odds + 100) = 100/250 = 0.4
+    - Negative odds (-150): |odds| / (|odds| + 100) = 150/250 = 0.6
+    
+    After normalization: fair_prob = implied_prob / total_implied_prob_for_game
+    Fair decimal odds = 1 / fair_prob
+    """
+    devigged_odds = {}
+    processed_games = set()
+    
+    for team, american_odds in fanduel_odds_dict.items():
+        if pd.isna(american_odds) or team in processed_games:
+            continue
+            
+        opponent = opponent_map.get(team)
+        if not opponent or opponent not in fanduel_odds_dict:
+            continue
+            
+        opponent_odds = fanduel_odds_dict[opponent]
+        if pd.isna(opponent_odds):
+            continue
+        
+        def american_to_implied_prob(odds):
+            if odds > 0:
+                return 100 / (odds + 100)
+            else:
+                return abs(odds) / (abs(odds) + 100)
+        
+        team_implied_prob = american_to_implied_prob(american_odds)
+        opponent_implied_prob = american_to_implied_prob(opponent_odds)
+        
+        total_implied_prob = team_implied_prob + opponent_implied_prob
+        
+        team_fair_prob = team_implied_prob / total_implied_prob
+        opponent_fair_prob = opponent_implied_prob / total_implied_prob
+        
+        devigged_odds[team] = 1 / team_fair_prob
+        devigged_odds[opponent] = 1 / opponent_fair_prob
+        
+        processed_games.add(team)
+        processed_games.add(opponent)
+    
+    return devigged_odds
+
 # 🔢 Kelly
 
 def kelly_wager(fair_odds, your_odds, bankroll):
@@ -181,6 +235,8 @@ kalshi_df = fetch_kalshi_mlb_odds_active_only()
 fanduel_odds = fetch_fanduel_odds("141e7d4fb0c345a19225eb2f2b114273")
 opponent_map = build_opponent_map()
 
+devigged_fanduel_odds = devig_fanduel_odds(fanduel_odds, opponent_map)
+
 kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
 kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
 kalshi_df["FanDuel Odds (American)"] = kalshi_df["Team Name"].map(fanduel_odds)
@@ -190,15 +246,16 @@ kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
 kalshi_df["Decimal Odds (FanDuel)"] = kalshi_df["FanDuel Odds (American)"].apply(
     lambda x: (x / 100) + 1 if x > 0 else (100 / -x) + 1 if pd.notna(x) else None
 )
+kalshi_df["Fair Decimal Odds (FanDuel)"] = kalshi_df["Team Name"].map(devigged_fanduel_odds)
 
-raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Decimal Odds (FanDuel)"]) - 1
+raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Fair Decimal Odds (FanDuel)"]) - 1
 kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
 kalshi_df["numeric_edge"] = raw_edge
 
 kalshi_df["$ Wager"] = kalshi_df.apply(
     lambda row: (
-        f"${round(min(kelly_wager(row['Decimal Odds (FanDuel)'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
-        if pd.notna(row["Decimal Odds (FanDuel)"]) and pd.notna(row["Decimal Odds (Kalshi)"])
+        f"${round(min(kelly_wager(row['Fair Decimal Odds (FanDuel)'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
+        if pd.notna(row["Fair Decimal Odds (FanDuel)"]) and pd.notna(row["Decimal Odds (Kalshi)"])
         else "$0"
     ),
     axis=1
