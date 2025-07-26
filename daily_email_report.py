@@ -5,8 +5,13 @@ import base64
 import smtplib
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import os
 from datetime import datetime, timedelta, date
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
@@ -184,21 +189,35 @@ def summarize_mlb():
         else:
             return_str = f"${int(round(return_amt))}"
 
+        try:
+            with open("/home/ubuntu/placed_orders.json", "r") as f:
+                placed_orders_data = json.load(f)
+            placed_order = next((order for order in placed_orders_data if order["ticker"] == o["ticker"]), {})
+            ev_before = f"{placed_order.get('expected_value_before_devig', 0):.1f}%" if placed_order else "N/A"
+            ev_after = f"{placed_order.get('expected_value_after_devig', 0):.1f}%" if placed_order else "N/A"
+        except FileNotFoundError:
+            ev_before = "N/A"
+            ev_after = "N/A"
+
         data.append({
             "team": team,
             "odds": odds,
             "wager": wager,
-            "return": return_str
+            "return": return_str,
+            "ev_before_devig": ev_before,
+            "ev_after_devig": ev_after
         })
 
     data.append({
         "team": "TOTAL",
         "odds": "",
         "wager": f"${total_wager_raw:.2f}",
-        "return": f"${total_return_raw:.2f}"
+        "return": f"${total_return_raw:.2f}",
+        "ev_before_devig": "",
+        "ev_after_devig": ""
     })
 
-    df = pd.DataFrame(data, columns=["team", "odds", "wager", "return"])
+    df = pd.DataFrame(data, columns=["team", "odds", "wager", "return", "ev_before_devig", "ev_after_devig"])
     return df
 
 # --- Main Execution ---
@@ -358,3 +377,101 @@ try:
     print("✅ Email sent successfully!")
 except Exception as e:
     print(f"❌ Failed to send email: {e}")
+
+def create_team_charts_email():
+    try:
+        with open("/home/ubuntu/odds_timeseries.json", "r") as f:
+            timeseries_data = json.load(f)
+    except FileNotFoundError:
+        print("No time series data available yet")
+        return
+    
+    if not timeseries_data:
+        return
+    
+    df = pd.DataFrame(timeseries_data)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+    teams = df['team'].unique()
+    
+    chart_attachments = []
+    email_body_parts = []
+    
+    for team in teams:
+        team_data = df[df['team'] == team].sort_values('timestamp')
+        
+        if len(team_data) < 2:
+            continue
+            
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        
+        ax1.plot(team_data['timestamp'], team_data['kalshi_implied_odds'], 
+                label='Kalshi Implied Odds', color='blue')
+        ax1.plot(team_data['timestamp'], team_data['fanduel_devigged_odds'], 
+                label='FanDuel Devigged Odds', color='red')
+        ax1.set_title(f'{team} - Implied Odds Over Time')
+        ax1.set_ylabel('Implied Probability')
+        ax1.legend()
+        ax1.grid(True)
+        
+        ax2.plot(team_data['timestamp'], team_data['expected_value'], 
+                label='Expected Value', color='green')
+        ax2.set_title(f'{team} - Expected Value Over Time')
+        ax2.set_ylabel('Expected Value')
+        ax2.set_xlabel('Time')
+        ax2.legend()
+        ax2.grid(True)
+        
+        for ax in [ax1, ax2]:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+        
+        plt.tight_layout()
+        
+        chart_filename = f'/tmp/{team.replace(" ", "_")}_chart.png'
+        plt.savefig(chart_filename, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        chart_attachments.append((chart_filename, team))
+        email_body_parts.append(f"<h3>{team}</h3><img src='cid:{team.replace(' ', '_')}'><br><br>")
+    
+    if not chart_attachments:
+        print("No charts to send - insufficient data")
+        return
+    
+    msg = MIMEMultipart('related')
+    msg['Subject'] = f"📈 MLB Team Analysis Charts — {datetime.now(eastern).date()}"
+    msg['From'] = sender_email
+    msg['To'] = "walkwalkm1@gmail.com"
+    
+    html_body = f"""
+    <html>
+    <body>
+        <h2>📈 MLB Team Analysis - Odds & Expected Value Tracking</h2>
+        <p>Daily charts showing Kalshi implied odds, FanDuel devigged odds, and expected value over time.</p>
+        {''.join(email_body_parts)}
+    </body>
+    </html>
+    """
+    
+    msg.attach(MIMEText(html_body, 'html'))
+    
+    for chart_file, team in chart_attachments:
+        with open(chart_file, 'rb') as f:
+            img = MIMEImage(f.read())
+            img.add_header('Content-ID', f'<{team.replace(" ", "_")}>')
+            msg.attach(img)
+        os.remove(chart_file)
+    
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, app_password)
+        server.sendmail(sender_email, ["walkwalkm1@gmail.com"], msg.as_string())
+        server.quit()
+        print("✅ Team charts email sent successfully!")
+    except Exception as e:
+        print(f"❌ Failed to send team charts email: {e}")
+
+create_team_charts_email()

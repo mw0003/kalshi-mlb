@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import pytz
 import statsapi
-from datetime import datetime
+from datetime import datetime, timedelta
 import base64
 import json
 import time as time_module
@@ -262,7 +262,37 @@ kalshi_df["$ Wager"] = kalshi_df.apply(
 )
 
 kalshi_df["Kalshi YES Ask (¢)"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int)
-kalshi_df = kalshi_df.sort_values(by="numeric_edge", ascending=False).drop(columns=["numeric_edge"]).reset_index(drop=True)
+kalshi_df = kalshi_df.sort_values(by="numeric_edge", ascending=False).reset_index(drop=True)
+
+def store_odds_timeseries():
+    filename = "/home/ubuntu/odds_timeseries.json"
+    timestamp = datetime.now(eastern).isoformat()
+    
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
+            data = json.load(f)
+    else:
+        data = []
+    
+    for _, row in kalshi_df.iterrows():
+        if pd.notna(row["Fair Decimal Odds (FanDuel)"]) and pd.notna(row["Kalshi %"]):
+            data.append({
+                "timestamp": timestamp,
+                "team": row["Team Name"],
+                "kalshi_implied_odds": row["Kalshi %"],
+                "fanduel_devigged_odds": 1 / row["Fair Decimal Odds (FanDuel)"],
+                "expected_value": row["numeric_edge"]
+            })
+    
+    cutoff_date = datetime.now(eastern) - timedelta(days=7)
+    data = [d for d in data if datetime.fromisoformat(d["timestamp"]) > cutoff_date]
+    
+    with open(filename, "w") as f:
+        json.dump(data, f)
+
+store_odds_timeseries()
+
+kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
 
 final_df = kalshi_df[[
     "Team Name", "Opponent Name",
@@ -397,6 +427,32 @@ for _, row in filtered_df.iterrows():
         result = submit_order(ticker, "yes", contracts, price)
         print(f"▶️ {team} → {contracts} contracts at {price}¢ → ✅ {result}")
         bankroll -= total_cost
+        
+        expected_value_before = (int(row["Kalshi YES Ask (¢)"]) / 100 - 1) * 100
+        expected_value_after = float(row["% Edge"].strip("%"))
+        
+        order_data = {
+            "timestamp": datetime.now(eastern).isoformat(),
+            "team": team,
+            "ticker": ticker,
+            "contracts": contracts,
+            "price": price,
+            "total_cost": total_cost,
+            "expected_value_before_devig": expected_value_before,
+            "expected_value_after_devig": expected_value_after
+        }
+        
+        orders_filename = "/home/ubuntu/placed_orders.json"
+        if os.path.exists(orders_filename):
+            with open(orders_filename, "r") as f:
+                orders_data = json.load(f)
+        else:
+            orders_data = []
+        
+        orders_data.append(order_data)
+        
+        with open(orders_filename, "w") as f:
+            json.dump(orders_data, f)
 
     except Exception as e:
         #print(f"❌ {row['Team Name']} — Error: {e}")
