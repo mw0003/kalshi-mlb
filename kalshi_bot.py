@@ -265,7 +265,7 @@ kalshi_df["Kalshi YES Ask (¢)"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int)
 kalshi_df = kalshi_df.sort_values(by="numeric_edge", ascending=False).reset_index(drop=True)
 
 def store_odds_timeseries():
-    filename = "/home/ubuntu/odds_timeseries.json"
+    filename = "/home/walkwalkm1/odds_timeseries.json"
     timestamp = datetime.now(eastern).isoformat()
     
     if os.path.exists(filename):
@@ -442,7 +442,7 @@ for _, row in filtered_df.iterrows():
             "expected_value_after_devig": expected_value_after
         }
         
-        orders_filename = "/home/ubuntu/placed_orders.json"
+        orders_filename = "/home/walkwalkm1/placed_orders.json"
         if os.path.exists(orders_filename):
             with open(orders_filename, "r") as f:
                 orders_data = json.load(f)

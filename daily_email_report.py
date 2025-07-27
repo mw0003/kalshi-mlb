@@ -190,7 +190,7 @@ def summarize_mlb():
             return_str = f"${int(round(return_amt))}"
 
         try:
-            with open("/home/ubuntu/placed_orders.json", "r") as f:
+            with open("/home/walkwalkm1/placed_orders.json", "r") as f:
                 placed_orders_data = json.load(f)
             placed_order = next((order for order in placed_orders_data if order["ticker"] == o["ticker"]), {})
             ev_before = f"{placed_order.get('expected_value_before_devig', 0):.1f}%" if placed_order else "N/A"
@@ -380,7 +380,7 @@ except Exception as e:
 
 def create_team_charts_email():
     try:
-        with open("/home/ubuntu/odds_timeseries.json", "r") as f:
+        with open("/home/walkwalkm1/odds_timeseries.json", "r") as f:
             timeseries_data = json.load(f)
     except FileNotFoundError:
         print("No time series data available yet")
