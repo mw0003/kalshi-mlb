@@ -649,21 +649,11 @@ def filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams):
     
     return filtered_df, filtered_count
 
-api_calls_made = 0
-max_api_calls = 100
 testing_mode = True  # Set to False for production
 
 def count_api_call():
-    """Track API calls and return whether we can make another call"""
-    global api_calls_made
-    print(f"📞 API call check: {api_calls_made}/{max_api_calls}")
-    
-    if api_calls_made >= max_api_calls:
-        print(f"🚫 API call limit reached ({max_api_calls})")
-        return False
-    
-    api_calls_made += 1
-    print(f"✅ API call approved. New count: {api_calls_made}/{max_api_calls}")
+    """Track API calls for logging purposes - no artificial limits in production"""
+    print(f"📞 Making API call...")
     return True
 
 def get_eligible_kalshi_markets_count():
@@ -697,7 +687,6 @@ def get_dynamic_kelly_multiplier():
 
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
-print(f"📞 API calls made so far: {api_calls_made}/{max_api_calls}")
 
 print("⚾ Fetching MLB Kalshi odds...")
 kalshi_df = fetch_kalshi_mlb_odds_active_only()
