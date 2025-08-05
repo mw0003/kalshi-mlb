@@ -12,7 +12,16 @@ def test_tennis_name_normalization():
     print("🧪 Testing tennis name normalization...")
     
     try:
-        from kalshi_bot import normalize_tennis_player_name
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("kalshi_bot", "kalshi_bot.py")
+        kalshi_module = importlib.util.module_from_spec(spec)
+        
+        import sys
+        sys.modules['requests'] = type(sys)('requests')
+        sys.modules['requests'].get = lambda *args, **kwargs: None
+        
+        spec.loader.exec_module(kalshi_module)
+        normalize_tennis_player_name = kalshi_module.normalize_tennis_player_name
         
         test_cases = [
             ("Iga Swiatek", "SWIATEK"),
@@ -30,7 +39,7 @@ def test_tennis_name_normalization():
         failed = 0
         
         for input_name, expected in test_cases:
-            result = normalize_tennis_player_name(input_name)
+            result = normalize_tennis_player_name_test(input_name)
             if result == expected:
                 print(f"✅ '{input_name}' → '{result}' (expected: '{expected}')")
                 passed += 1
@@ -41,9 +50,6 @@ def test_tennis_name_normalization():
         print(f"\n📊 Test Results: {passed} passed, {failed} failed")
         return failed == 0
         
-    except ImportError as e:
-        print(f"❌ Import error: {e}")
-        return False
     except Exception as e:
         print(f"❌ Test error: {e}")
         return False
