@@ -400,6 +400,16 @@ def fetch_sport_opportunities(sport, api_key):
         print(f"⚠️ No Kalshi data found for {sport}")
         return pd.DataFrame()
     
+    print(f"🔍 Pre-filtering markets to optimize API usage...")
+    already_bet_teams = get_already_bet_teams()
+    kalshi_df, filtered_count = filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams)
+    
+    if kalshi_df.empty:
+        print(f"⚠️ No remaining markets after filtering already bet teams for {sport}")
+        return pd.DataFrame()
+    
+    print(f"📊 Remaining markets after pre-filtering: {len(kalshi_df)} (saved {filtered_count} API calls)")
+    
     print(f"🎯 Checking API call limit before fetching sportsbook odds...")
     if count_api_call():
         print(f"📡 Fetching composite odds from sportsbooks for {config['api_sport']}...")
@@ -590,6 +600,54 @@ def build_tennis_team_map(sportsbook_odds, kalshi_df):
     print(f"📋 Tennis team map: {tennis_team_map}")
     
     return tennis_team_map
+
+def get_already_bet_teams():
+    """
+    Get teams/players we've already bet on today to avoid duplicate API calls
+    Returns set of team abbreviations from executed orders
+    """
+    print(f"🔍 Checking for already bet teams to optimize API calls...")
+    
+    try:
+        executed_team_abbrs = set()
+        for order in get_todays_orders():
+            if (
+                order.get("status") in ("executed", "resting") and
+                order.get("action") == "buy" and
+                order.get("ticker")
+            ):
+                parts = order["ticker"].split('-')
+                if len(parts) >= 3:
+                    abbr = parts[-1]
+                    executed_team_abbrs.add(abbr)
+        
+        print(f"✅ Found {len(executed_team_abbrs)} already bet teams: {sorted(executed_team_abbrs)}")
+        return executed_team_abbrs
+        
+    except Exception as e:
+        print(f"⚠️ Error fetching today's orders: {e} - proceeding without pre-filtering")
+        return set()
+
+def filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams):
+    """
+    Filter out Kalshi markets for teams we've already bet on
+    Returns filtered DataFrame and count of filtered markets
+    """
+    if kalshi_df.empty or not already_bet_teams:
+        return kalshi_df, 0
+    
+    original_count = len(kalshi_df)
+    
+    filtered_df = kalshi_df[~kalshi_df["Team"].isin(already_bet_teams)].reset_index(drop=True)
+    
+    filtered_count = original_count - len(filtered_df)
+    print(f"🚫 Pre-filtered {filtered_count} markets for already bet teams")
+    
+    if filtered_count > 0:
+        filtered_teams = kalshi_df[kalshi_df["Team"].isin(already_bet_teams)]["Team"].tolist()
+        print(f"📋 Filtered teams: {sorted(set(filtered_teams))}")
+    
+    return filtered_df, filtered_count
 
 api_calls_made = 0
 max_api_calls = 100
