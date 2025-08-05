@@ -31,7 +31,7 @@ def normalize_tennis_player_name(full_name):
         normalized = last_name.upper()
         
         char_map = {
-            'Ć': 'C', 'Č': 'C', 'Ž': 'Z', 'Š': 'S', 'Đ': 'D',
+            'Ć': 'C', 'Č': 'C', 'Ž': 'Z', 'Š': 'S', 'Đ': 'DJ', 'Ð': 'D',
             'Ñ': 'N', 'Ü': 'U', 'Ö': 'O', 'Ä': 'A', 'É': 'E',
             'È': 'E', 'À': 'A', 'Ì': 'I', 'Ò': 'O', 'Ù': 'U'
         }
