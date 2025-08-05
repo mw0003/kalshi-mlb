@@ -408,6 +408,13 @@ def fetch_sport_opportunities(sport, api_key):
         
         opponent_map = {}
         print(f"🔗 Building opponent map for {len(kalshi_df)} teams/players...")
+        
+        if sport.startswith("tennis"):
+            print(f"🎾 Tennis sport detected: {sport} - using dynamic name matching")
+            tennis_team_map = build_tennis_team_map(sportsbook_odds, kalshi_df)
+            config["team_map"] = tennis_team_map
+            print(f"🎯 Updated tennis team map with {len(tennis_team_map)} matched players")
+        
         for team1, team2 in zip(kalshi_df["Team"], kalshi_df["Team"]):
             pass
         
@@ -488,6 +495,101 @@ def devig_soccer_odds(odds_dict):
                 devigged_odds[f"{game_id}_{outcome}"] = 1 / fair_prob
     
     return devigged_odds
+
+def normalize_tennis_player_name(full_name):
+    """
+    Normalize tennis player name to match Kalshi format
+    Tries to extract last name and convert to uppercase
+    Returns None if normalization fails - implements try-match-ignore-mismatch logic
+    """
+    if not full_name or not isinstance(full_name, str):
+        print(f"⚠️ Invalid tennis player name: {full_name}")
+        return None
+    
+    try:
+        name = full_name.strip()
+        
+        if "," in name:
+            last_name = name.split(",")[0].strip()
+            print(f"🎾 Tennis name format detected: Last,First -> '{last_name}'")
+        elif ". " in name:
+            parts = name.split(". ")
+            last_name = parts[-1].strip() if len(parts) > 1 else name
+            print(f"🎾 Tennis name format detected: Initial.Last -> '{last_name}'")
+        else:
+            parts = name.split()
+            last_name = parts[-1] if parts else name
+            print(f"🎾 Tennis name format detected: First Last -> '{last_name}'")
+        
+        normalized = last_name.upper()
+        
+        char_map = {
+            'Ć': 'C', 'Č': 'C', 'Ž': 'Z', 'Š': 'S', 'Đ': 'D',
+            'Ñ': 'N', 'Ü': 'U', 'Ö': 'O', 'Ä': 'A', 'É': 'E',
+            'È': 'E', 'À': 'A', 'Ì': 'I', 'Ò': 'O', 'Ù': 'U'
+        }
+        
+        for original, replacement in char_map.items():
+            normalized = normalized.replace(original, replacement)
+        
+        print(f"🎾 Tennis name normalized: '{full_name}' → '{normalized}'")
+        return normalized
+        
+    except Exception as e:
+        print(f"❌ Error normalizing tennis name '{full_name}': {e} - ignoring mismatch")
+        return None
+
+def match_tennis_player_to_kalshi(odds_player_name, kalshi_markets):
+    """
+    Try to match tennis player name from odds API to Kalshi market
+    Returns matching Kalshi market data or None if no match found
+    Implements try-match-ignore-mismatch logic as requested
+    """
+    normalized_name = normalize_tennis_player_name(odds_player_name)
+    if not normalized_name:
+        print(f"🚫 Could not normalize tennis player name: '{odds_player_name}' - ignoring")
+        return None
+    
+    for _, market_row in kalshi_markets.iterrows():
+        kalshi_team = market_row.get("Team", "")
+        if kalshi_team == normalized_name:
+            print(f"✅ Tennis match found: '{odds_player_name}' → '{kalshi_team}'")
+            return market_row.to_dict()
+    
+    print(f"❌ No Kalshi match for tennis player: '{odds_player_name}' (normalized: '{normalized_name}') - ignoring mismatch")
+    return None
+
+def build_tennis_team_map(sportsbook_odds, kalshi_df):
+    """
+    Build dynamic team map for tennis by attempting to match player names
+    Returns dictionary mapping sportsbook names to Kalshi team codes
+    Implements try-match-ignore-mismatch logic
+    """
+    print(f"🎾 Building tennis team map from {len(sportsbook_odds)} sportsbook entries and {len(kalshi_df)} Kalshi markets")
+    
+    tennis_team_map = {}
+    matches_found = 0
+    mismatches_ignored = 0
+    
+    all_player_names = set()
+    for game_id, odds_data in sportsbook_odds.items():
+        if isinstance(odds_data, dict):
+            all_player_names.update(odds_data.keys())
+    
+    print(f"🔍 Found {len(all_player_names)} unique player names in sportsbook data")
+    
+    for player_name in all_player_names:
+        match = match_tennis_player_to_kalshi(player_name, kalshi_df)
+        if match:
+            tennis_team_map[player_name] = match["Team"]
+            matches_found += 1
+        else:
+            mismatches_ignored += 1
+    
+    print(f"🎯 Tennis team map results: {matches_found} matches found, {mismatches_ignored} mismatches ignored")
+    print(f"📋 Tennis team map: {tennis_team_map}")
+    
+    return tennis_team_map
 
 api_calls_made = 0
 max_api_calls = 100
