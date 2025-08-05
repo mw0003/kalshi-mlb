@@ -283,7 +283,7 @@ nfl_team_abbr_to_name = {
 wnba_team_abbr_to_name = {
     "ATL": "Atlanta Dream", "CHI": "Chicago Sky", "CONN": "Connecticut Sun", "DAL": "Dallas Wings",
     "IND": "Indiana Fever", "LV": "Las Vegas Aces", "MIN": "Minnesota Lynx", "NY": "New York Liberty",
-    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LAS": "Las Vegas Aces"
+    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LA": "Los Angeles Sparks"
 }
 
 team_abbr_to_name = mlb_team_abbr_to_name
