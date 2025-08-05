@@ -120,81 +120,97 @@ def fetch_kalshi_mlb_odds_active_only():
         })
     return pd.DataFrame(rows)
 
-def fetch_fanduel_odds(api_key):
-    url = 'https://api.the-odds-api.com/v4/sports/baseball_mlb/odds'
+def fetch_composite_odds(api_key, sport="baseball_mlb"):
+    url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
     params = {
         "regions": "us",
         "markets": "h2h",
         "oddsFormat": "american",
-        "bookmakers": "fanduel",
+        "bookmakers": "fanduel,pinnacle,draftkings",
         "apiKey": api_key
     }
     response = requests.get(url, params=params)
     response.raise_for_status()
-    odds_lookup = {}
+    
+    sportsbook_odds = {"fanduel": {}, "pinnacle": {}, "draftkings": {}}
+    
     for game in response.json():
         start_time = pd.to_datetime(game.get("commence_time"), utc=True).tz_convert('US/Eastern')
         if start_time.date() != today:
             continue
-        for b in game.get("bookmakers", []):
-            if b["key"] == "fanduel":
-                market = next((m for m in b.get("markets", []) if m["key"] == "h2h"), None)
+            
+        now = datetime.now(eastern)
+        time_until_start = (start_time - now).total_seconds() / 3600  # hours
+        if time_until_start > 1 and time_until_start > 0:  # Skip games starting more than 1 hour from now
+            continue
+            
+        for bookmaker in game.get("bookmakers", []):
+            book_key = bookmaker["key"]
+            if book_key in sportsbook_odds:
+                market = next((m for m in bookmaker.get("markets", []) if m["key"] == "h2h"), None)
                 if market:
                     for outcome in market.get("outcomes", []):
                         team = outcome["name"].strip().replace("Oakland Athletics", "Athletics")
-                        odds_lookup[team] = outcome["price"]
-    return odds_lookup
+                        sportsbook_odds[book_key][team] = outcome["price"]
+    
+    return sportsbook_odds
 
-def build_opponent_map():
+def build_opponent_map_with_timing():
     games = statsapi.schedule(start_date=str(today), end_date=str(today))
     matchup = {}
+    game_timing = {}
+    
     for game in games:
         away = game['away_name'].replace("Oakland Athletics", "Athletics")
         home = game['home_name'].replace("Oakland Athletics", "Athletics")
         matchup[away] = home
         matchup[home] = away
-    return matchup
+        
+        game_time = pd.to_datetime(game['game_datetime']).tz_convert('US/Eastern')
+        now = datetime.now(eastern)
+        time_until_start = (game_time - now).total_seconds() / 3600  # hours
+        
+        is_eligible = (game.get('status') in ['In Progress', 'Live'] or 
+                      (time_until_start <= 1 and time_until_start >= 0))
+        
+        game_timing[away] = is_eligible
+        game_timing[home] = is_eligible
+    
+    return matchup, game_timing
 
 
-def devig_fanduel_odds(fanduel_odds_dict, opponent_map):
+def american_to_implied_prob(odds):
+    if pd.isna(odds):
+        return None
+    if odds > 0:
+        return 100 / (odds + 100)
+    else:
+        return abs(odds) / (abs(odds) + 100)
+
+def devig_sportsbook_odds(odds_dict, opponent_map):
     """
-    Remove vig from FanDuel moneyline odds using normalization method.
-    
-    Formula:
-    1. Convert American odds to implied probabilities
-    2. For each game, normalize probabilities so they sum to 1.0 (removing vig)
-    3. Convert back to fair decimal odds
-    
-    American to implied probability: 
-    - Positive odds (+150): 100 / (odds + 100) = 100/250 = 0.4
-    - Negative odds (-150): |odds| / (|odds| + 100) = 150/250 = 0.6
-    
-    After normalization: fair_prob = implied_prob / total_implied_prob_for_game
-    Fair decimal odds = 1 / fair_prob
+    Remove vig from moneyline odds using normalization method.
     """
     devigged_odds = {}
     processed_games = set()
     
-    for team, american_odds in fanduel_odds_dict.items():
+    for team, american_odds in odds_dict.items():
         if pd.isna(american_odds) or team in processed_games:
             continue
             
         opponent = opponent_map.get(team)
-        if not opponent or opponent not in fanduel_odds_dict:
+        if not opponent or opponent not in odds_dict:
             continue
             
-        opponent_odds = fanduel_odds_dict[opponent]
+        opponent_odds = odds_dict[opponent]
         if pd.isna(opponent_odds):
             continue
         
-        def american_to_implied_prob(odds):
-            if odds > 0:
-                return 100 / (odds + 100)
-            else:
-                return abs(odds) / (abs(odds) + 100)
-        
         team_implied_prob = american_to_implied_prob(american_odds)
         opponent_implied_prob = american_to_implied_prob(opponent_odds)
+        
+        if team_implied_prob is None or opponent_implied_prob is None:
+            continue
         
         total_implied_prob = team_implied_prob + opponent_implied_prob
         
@@ -209,6 +225,37 @@ def devig_fanduel_odds(fanduel_odds_dict, opponent_map):
     
     return devigged_odds
 
+def devig_composite_odds(sportsbook_odds, opponent_map, weights={"pinnacle": 0.5, "fanduel": 0.25, "draftkings": 0.25}):
+    """
+    Create composite devigged odds from multiple sportsbooks with weighted averages.
+    """
+    devigged_books = {}
+    for book, odds_dict in sportsbook_odds.items():
+        if odds_dict:  # Only process if we have odds from this book
+            devigged_books[book] = devig_sportsbook_odds(odds_dict, opponent_map)
+    
+    # Create composite weighted probabilities
+    composite_odds = {}
+    all_teams = set()
+    for book_odds in devigged_books.values():
+        all_teams.update(book_odds.keys())
+    
+    for team in all_teams:
+        weighted_prob = 0
+        total_weight = 0
+        
+        for book, book_odds in devigged_books.items():
+            if team in book_odds and book in weights:
+                prob = 1 / book_odds[team]  # Convert decimal odds to probability
+                weighted_prob += prob * weights[book]
+                total_weight += weights[book]
+        
+        if total_weight > 0:
+            final_prob = weighted_prob / total_weight
+            composite_odds[team] = 1 / final_prob  # Convert back to decimal odds
+    
+    return composite_odds
+
 # 🔢 Kelly
 
 def kelly_wager(fair_odds, your_odds, bankroll):
@@ -219,8 +266,8 @@ def kelly_wager(fair_odds, your_odds, bankroll):
     except:
         return 0
 
-# Team abbreviation map
-team_abbr_to_name = {
+# Team abbreviation maps for different sports
+mlb_team_abbr_to_name = {
     "ATL": "Atlanta Braves", "AZ": "Arizona Diamondbacks", "DET": "Detroit Tigers", "BAL": "Baltimore Orioles",
     "BOS": "Boston Red Sox", "CLE": "Cleveland Guardians", "KC": "Kansas City Royals", "HOU": "Houston Astros",
     "NYM": "New York Mets", "WSH": "Washington Nationals", "PHI": "Philadelphia Phillies", "CHC": "Chicago Cubs",
@@ -231,31 +278,200 @@ team_abbr_to_name = {
     "CIN": "Cincinnati Reds", "SD": "San Diego Padres", "TB": "Tampa Bay Rays", "OAK": "Oakland Athletics", "ATH": "Athletics"
 }
 
-kalshi_df = fetch_kalshi_mlb_odds_active_only()
-fanduel_odds = fetch_fanduel_odds("141e7d4fb0c345a19225eb2f2b114273")
-opponent_map = build_opponent_map()
+nfl_team_abbr_to_name = {
+    "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
+    "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
+    "DAL": "Dallas Cowboys", "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars", "KC": "Kansas City Chiefs",
+    "LV": "Las Vegas Raiders", "LAC": "Los Angeles Chargers", "LAR": "Los Angeles Rams", "MIA": "Miami Dolphins",
+    "MIN": "Minnesota Vikings", "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
+    "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers", "SF": "San Francisco 49ers",
+    "SEA": "Seattle Seahawks", "TB": "Tampa Bay Buccaneers", "TEN": "Tennessee Titans", "WAS": "Washington Commanders"
+}
 
-devigged_fanduel_odds = devig_fanduel_odds(fanduel_odds, opponent_map)
+wnba_team_abbr_to_name = {
+    "ATL": "Atlanta Dream", "CHI": "Chicago Sky", "CONN": "Connecticut Sun", "DAL": "Dallas Wings",
+    "IND": "Indiana Fever", "LV": "Las Vegas Aces", "MIN": "Minnesota Lynx", "NY": "New York Liberty",
+    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LAS": "Las Vegas Aces"
+}
+
+team_abbr_to_name = mlb_team_abbr_to_name
+
+def fetch_sport_opportunities(sport, api_key):
+    """Fetch opportunities for a specific sport"""
+    sport_configs = {
+        "mlb": {
+            "api_sport": "baseball_mlb",
+            "kalshi_series": "KXMLBGAME",
+            "team_map": mlb_team_abbr_to_name
+        },
+        "nfl": {
+            "api_sport": "americanfootball_nfl", 
+            "kalshi_series": "KXNFLGAME",
+            "team_map": nfl_team_abbr_to_name
+        },
+        "wnba": {
+            "api_sport": "basketball_wnba",
+            "kalshi_series": "KXWNBAGAME", 
+            "team_map": wnba_team_abbr_to_name
+        }
+    }
+    
+    if sport not in sport_configs:
+        return pd.DataFrame()
+    
+    config = sport_configs[sport]
+    
+    if sport == "mlb":
+        kalshi_df = fetch_kalshi_mlb_odds_active_only()
+    else:
+        kalshi_df = fetch_kalshi_sport_odds(config["kalshi_series"])
+    
+    if kalshi_df.empty:
+        return pd.DataFrame()
+    
+    if count_api_call():
+        sportsbook_odds = fetch_composite_odds(api_key, config["api_sport"])
+        
+        opponent_map = {}
+        for team1, team2 in zip(kalshi_df["Team"], kalshi_df["Team"]):
+            pass
+        
+        composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
+    else:
+        composite_odds = {}
+    
+    kalshi_df["Sport"] = sport.upper()
+    kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"])
+    kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
+    
+    kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
+    kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
+    
+    raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1
+    kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
+    kalshi_df["numeric_edge"] = raw_edge
+    
+    return kalshi_df
+
+def fetch_kalshi_sport_odds(series_ticker):
+    """Generic function to fetch Kalshi odds for any sport series"""
+    url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
+    headers = {"accept": "application/json"}
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        rows = []
+        for market in data.get("markets", []):
+            if market.get("status") != "active":
+                continue
+            parts = market.get("ticker", "").split('-')
+            if len(parts) < 3:
+                continue
+            rows.append({
+                "Market Ticker": market.get("ticker"),
+                "Game Title": market.get("title"),
+                "Team": parts[-1],
+                "Kalshi YES Ask (¢)": market.get("yes_ask")
+            })
+        return pd.DataFrame(rows)
+    except:
+        return pd.DataFrame()
+
+def devig_soccer_odds(odds_dict):
+    """Special devigging for soccer 3-way markets (Win/Loss/Draw)"""
+    devigged_odds = {}
+    
+    for game_id, outcomes in odds_dict.items():
+        if len(outcomes) != 3:  # Should have home, away, draw
+            continue
+            
+        total_implied_prob = 0
+        implied_probs = {}
+        
+        for outcome, american_odds in outcomes.items():
+            prob = american_to_implied_prob(american_odds)
+            if prob is not None:
+                implied_probs[outcome] = prob
+                total_implied_prob += prob
+        
+        # Normalize probabilities
+        if total_implied_prob > 0:
+            for outcome, prob in implied_probs.items():
+                fair_prob = prob / total_implied_prob
+                devigged_odds[f"{game_id}_{outcome}"] = 1 / fair_prob
+    
+    return devigged_odds
+
+api_calls_made = 0
+max_api_calls = 100
+testing_mode = True  # Set to False for production
+
+def count_api_call():
+    global api_calls_made
+    api_calls_made += 1
+    print(f"API calls made: {api_calls_made}/{max_api_calls}")
+    if api_calls_made >= max_api_calls:
+        print("⚠️ API call limit reached!")
+        return False
+    return True
+
+def get_eligible_kalshi_markets_count():
+    """Count eligible Kalshi markets across all supported sports"""
+    try:
+        kalshi_df = fetch_kalshi_mlb_odds_active_only()
+        return len(kalshi_df)
+    except:
+        return 0
+
+def get_dynamic_kelly_multiplier():
+    """Calculate dynamic Kelly multiplier based on available markets"""
+    market_count = get_eligible_kalshi_markets_count()
+    
+    if market_count < 10:
+        return 0.75
+    elif market_count < 20:
+        return 0.65
+    elif market_count < 30:
+        return 0.60
+    else:
+        return 0.50
+
+kalshi_df = fetch_kalshi_mlb_odds_active_only()
+
+if count_api_call():
+    sportsbook_odds = fetch_composite_odds("141e7d4fb0c345a19225eb2f2b114273")
+    opponent_map, game_timing = build_opponent_map_with_timing()
+    
+    eligible_teams = {team for team, is_eligible in game_timing.items() if is_eligible}
+    kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+    
+    composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
+else:
+    print("⚠️ Skipping odds fetch due to API limit")
+    composite_odds = {}
+    opponent_map, game_timing = {}, {}
 
 kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
 kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
-kalshi_df["FanDuel Odds (American)"] = kalshi_df["Team Name"].map(fanduel_odds)
+
+kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
 
 kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
 kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
-kalshi_df["Decimal Odds (FanDuel)"] = kalshi_df["FanDuel Odds (American)"].apply(
-    lambda x: (x / 100) + 1 if x > 0 else (100 / -x) + 1 if pd.notna(x) else None
-)
-kalshi_df["Fair Decimal Odds (FanDuel)"] = kalshi_df["Team Name"].map(devigged_fanduel_odds)
 
-raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Fair Decimal Odds (FanDuel)"]) - 1
+raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1
 kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
 kalshi_df["numeric_edge"] = raw_edge
 
+dynamic_kelly = get_dynamic_kelly_multiplier()
+print(f"Using dynamic Kelly multiplier: {dynamic_kelly}")
+
 kalshi_df["$ Wager"] = kalshi_df.apply(
     lambda row: (
-        f"${round(min(kelly_wager(row['Fair Decimal Odds (FanDuel)'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
-        if pd.notna(row["Fair Decimal Odds (FanDuel)"]) and pd.notna(row["Decimal Odds (Kalshi)"])
+        f"${round(min(kelly_wager(row['Composite Fair Odds'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
+        if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Decimal Odds (Kalshi)"])
         else "$0"
     ),
     axis=1
@@ -275,12 +491,12 @@ def store_odds_timeseries():
         data = []
     
     for _, row in kalshi_df.iterrows():
-        if pd.notna(row["Fair Decimal Odds (FanDuel)"]) and pd.notna(row["Kalshi %"]):
+        if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Kalshi %"]):
             data.append({
                 "timestamp": timestamp,
                 "team": row["Team Name"],
                 "kalshi_implied_odds": row["Kalshi %"],
-                "fanduel_devigged_odds": 1 / row["Fair Decimal Odds (FanDuel)"],
+                "composite_devigged_odds": 1 / row["Composite Fair Odds"],
                 "expected_value": row["numeric_edge"]
             })
     
@@ -296,7 +512,7 @@ kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
 
 final_df = kalshi_df[[
     "Team Name", "Opponent Name",
-    "Kalshi YES Ask (¢)", "FanDuel Odds (American)",
+    "Kalshi YES Ask (¢)", "Composite Fair Odds",
     "% Edge", "$ Wager", "Market Ticker"
 ]]
 
@@ -413,7 +629,7 @@ for _, row in filtered_df.iterrows():
 
         ticker = row["Market Ticker"]
         team = row["Team Name"]
-        wager_dollars = 0.75 * float(row["$ Wager"].strip("$") or 0)
+        wager_dollars = dynamic_kelly * float(row["$ Wager"].strip("$") or 0)
         price = int(row["Kalshi YES Ask (¢)"])
         cost_per_contract = price / 100
         suggested_contracts = int(wager_dollars // cost_per_contract)
@@ -424,9 +640,13 @@ for _, row in filtered_df.iterrows():
             #print(f"🚫 {team} — Not enough bankroll to place even 1 contract.")
             continue
 
-        result = submit_order(ticker, "yes", contracts, price)
-        print(f"▶️ {team} → {contracts} contracts at {price}¢ → ✅ {result}")
-        bankroll -= total_cost
+        if testing_mode:
+            print(f"🧪 TEST MODE: Would place order for {team} → {contracts} contracts at {price}¢")
+            result = {"status": "test_mode"}
+        else:
+            result = submit_order(ticker, "yes", contracts, price)
+            print(f"▶️ {team} → {contracts} contracts at {price}¢ → ✅ {result}")
+            bankroll -= total_cost
         
         expected_value_before = (int(row["Kalshi YES Ask (¢)"]) / 100 - 1) * 100
         expected_value_after = float(row["% Edge"].strip("%"))
