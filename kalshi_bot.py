@@ -331,7 +331,8 @@ nfl_team_abbr_to_name = {
 wnba_team_abbr_to_name = {
     "ATL": "Atlanta Dream", "CHI": "Chicago Sky", "CONN": "Connecticut Sun", "DAL": "Dallas Wings",
     "IND": "Indiana Fever", "LV": "Las Vegas Aces", "MIN": "Minnesota Lynx", "NY": "New York Liberty",
-    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LA": "Los Angeles Sparks"
+    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LA": "Los Angeles Sparks",
+    "GS": "Golden State Valkyries"
 }
 
 all_team_mappings = {
@@ -343,8 +344,9 @@ all_team_mappings = {
 combined_team_abbr_to_name = {}
 for sport, mapping in all_team_mappings.items():
     for abbr, name in mapping.items():
-        combined_team_abbr_to_name[abbr] = name
         combined_team_abbr_to_name[f"{sport}_{abbr}"] = name
+        if abbr not in combined_team_abbr_to_name:
+            combined_team_abbr_to_name[abbr] = name
 
 team_abbr_to_name = combined_team_abbr_to_name
 
@@ -555,15 +557,19 @@ for sport in sports_to_process:
 if all_sport_dataframes:
     kalshi_df = pd.concat(all_sport_dataframes, ignore_index=True)
     
+    if not kalshi_df.empty and "Market Ticker" in kalshi_df.columns:
+        today_str = today.strftime("%d%b%y").upper()  # Format: 06AUG25
+        kalshi_df = kalshi_df[kalshi_df["Market Ticker"].str.contains(today_str, na=False)]
+    
     print("\n" + "="*80)
-    print("📋 FULL MULTI-SPORT DATAFRAME (Before Filtering)")
+    print("📋 FULL MULTI-SPORT DATAFRAME (Today's Games Only)")
     print("="*80)
     if not kalshi_df.empty:
         display_columns = ["Sport", "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", "Composite Fair Odds", "% Edge", "Market Ticker"]
         available_columns = [col for col in display_columns if col in kalshi_df.columns]
         print(kalshi_df[available_columns].to_string(index=False))
     else:
-        print("No data to display")
+        print("No games found for today")
     print("="*80 + "\n")
 else:
     kalshi_df = pd.DataFrame()
@@ -748,15 +754,17 @@ for i, row in filtered_df.iterrows():
         if "Sport" in row and pd.notna(row["Sport"]):
             sport_prefix = row["Sport"]
             team_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
-                        if name == row["Team Name"] and (abbr.startswith(f"{sport_prefix}_") or "_" not in abbr)]
+                        if name == row["Team Name"] and abbr.startswith(f"{sport_prefix}_")]
             if pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
                 opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
-                           if name == row["Opponent Name"] and (abbr.startswith(f"{sport_prefix}_") or "_" not in abbr)]
+                           if name == row["Opponent Name"] and abbr.startswith(f"{sport_prefix}_")]
         
         if not team_abbr:
-            team_abbr = [abbr for abbr, name in team_abbr_to_name.items() if name == row["Team Name"]]
+            team_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
+                        if name == row["Team Name"] and "_" not in abbr]
         if not opp_abbr and pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
-            opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() if name == row["Opponent Name"]]
+            opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
+                       if name == row["Opponent Name"] and "_" not in abbr]
             
         print(f"🔍 Team abbreviations - Team: {team_abbr}, Opponent: {opp_abbr}")
 
