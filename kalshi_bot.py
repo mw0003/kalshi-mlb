@@ -729,7 +729,8 @@ if count_api_call():
     eligible_teams = {team for team, is_eligible in game_timing.items() if is_eligible}
     print(f"✅ Eligible teams (starting soon/in progress): {len(eligible_teams)} - {eligible_teams}")
     
-    kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+    kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
+    kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
     print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")
 else:
     print("🚫 API call limit reached, skipping sportsbook odds fetch")
@@ -739,7 +740,9 @@ else:
 
 composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
 
-kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
+if game_timing:
+    kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+    print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
 kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
 
 kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
