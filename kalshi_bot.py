@@ -742,7 +742,8 @@ composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
 
 if game_timing:
     kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
-    print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
+    print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")
+kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
 kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
 
 if game_timing:
