@@ -224,6 +224,16 @@ def summarize_sport(sport_prefix, sport_name, team_map):
 def summarize_mlb():
     """Backward compatibility wrapper for MLB"""
     TEAM_MAP = {
+        "MLB_DET": "Detroit Tigers", "MLB_MIA": "Miami Marlins", "MLB_CWS": "Chicago White Sox",
+        "MLB_LAA": "Los Angeles Angels", "MLB_LAD": "Los Angeles Dodgers", "MLB_SD": "San Diego Padres",
+        "MLB_NYY": "New York Yankees", "MLB_TOR": "Toronto Blue Jays", "MLB_STL": "St. Louis Cardinals",
+        "MLB_MIL": "Milwaukee Brewers", "MLB_ATL": "Atlanta Braves", "MLB_TEX": "Texas Rangers",
+        "MLB_HOU": "Houston Astros", "MLB_BAL": "Baltimore Orioles", "MLB_PHI": "Philadelphia Phillies",
+        "MLB_SEA": "Seattle Mariners", "MLB_CHC": "Chicago Cubs", "MLB_BOS": "Boston Red Sox",
+        "MLB_CLE": "Cleveland Guardians", "MLB_OAK": "Oakland Athletics", "MLB_WSH": "Washington Nationals",
+        "MLB_MIN": "Minnesota Twins", "MLB_ARI": "Arizona Diamondbacks", "MLB_COL": "Colorado Rockies",
+        "MLB_KC": "Kansas City Royals", "MLB_CIN": "Cincinnati Reds", "MLB_PIT": "Pittsburgh Pirates",
+        "MLB_TBR": "Tampa Bay Rays", "MLB_SFG": "San Francisco Giants", "MLB_NYM": "New York Mets",
         "DET": "Detroit Tigers", "MIA": "Miami Marlins", "CWS": "Chicago White Sox",
         "LAA": "Los Angeles Angels", "LAD": "Los Angeles Dodgers", "SD": "San Diego Padres",
         "NYY": "New York Yankees", "TOR": "Toronto Blue Jays", "STL": "St. Louis Cardinals",
@@ -336,6 +346,16 @@ total_return_pct_normalized = (today_balance / actual_total_capital - 1) * 100
 sport_summaries = {}
 sport_configs = {
     "MLB": ("KXMLBGAME", {
+        "MLB_DET": "Detroit Tigers", "MLB_MIA": "Miami Marlins", "MLB_CWS": "Chicago White Sox",
+        "MLB_LAA": "Los Angeles Angels", "MLB_LAD": "Los Angeles Dodgers", "MLB_SD": "San Diego Padres",
+        "MLB_NYY": "New York Yankees", "MLB_TOR": "Toronto Blue Jays", "MLB_STL": "St. Louis Cardinals",
+        "MLB_MIL": "Milwaukee Brewers", "MLB_ATL": "Atlanta Braves", "MLB_TEX": "Texas Rangers",
+        "MLB_HOU": "Houston Astros", "MLB_BAL": "Baltimore Orioles", "MLB_PHI": "Philadelphia Phillies",
+        "MLB_SEA": "Seattle Mariners", "MLB_CHC": "Chicago Cubs", "MLB_BOS": "Boston Red Sox",
+        "MLB_CLE": "Cleveland Guardians", "MLB_OAK": "Oakland Athletics", "MLB_WSH": "Washington Nationals",
+        "MLB_MIN": "Minnesota Twins", "MLB_ARI": "Arizona Diamondbacks", "MLB_COL": "Colorado Rockies",
+        "MLB_KC": "Kansas City Royals", "MLB_CIN": "Cincinnati Reds", "MLB_PIT": "Pittsburgh Pirates",
+        "MLB_TBR": "Tampa Bay Rays", "MLB_SFG": "San Francisco Giants", "MLB_NYM": "New York Mets",
         "DET": "Detroit Tigers", "MIA": "Miami Marlins", "CWS": "Chicago White Sox",
         "LAA": "Los Angeles Angels", "LAD": "Los Angeles Dodgers", "SD": "San Diego Padres",
         "NYY": "New York Yankees", "TOR": "Toronto Blue Jays", "STL": "St. Louis Cardinals",
