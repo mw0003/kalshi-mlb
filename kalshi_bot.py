@@ -351,7 +351,19 @@ wnba_team_abbr_to_name = {
     "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LA": "Los Angeles Sparks"
 }
 
-team_abbr_to_name = mlb_team_abbr_to_name
+all_team_mappings = {
+    "MLB": mlb_team_abbr_to_name,
+    "NFL": nfl_team_abbr_to_name, 
+    "WNBA": wnba_team_abbr_to_name
+}
+
+combined_team_abbr_to_name = {}
+for sport, mapping in all_team_mappings.items():
+    for abbr, name in mapping.items():
+        combined_team_abbr_to_name[abbr] = name
+        combined_team_abbr_to_name[f"{sport}_{abbr}"] = name
+
+team_abbr_to_name = combined_team_abbr_to_name
 
 def fetch_sport_opportunities(sport, api_key):
     """Fetch opportunities for a specific sport"""
@@ -712,68 +724,53 @@ def get_dynamic_kelly_multiplier():
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
 
-print("⚾ Fetching MLB Kalshi odds...")
-kalshi_df = fetch_kalshi_mlb_odds_active_only()
-print(f"📊 MLB Kalshi DataFrame shape: {kalshi_df.shape}")
+sports_to_process = ["mlb", "nfl", "wnba", "tennis_wta", "tennis_atp"]
+api_key = os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273")
 
-print("🎯 Checking API call limit for sportsbook odds...")
-if count_api_call():
-    print("📡 Fetching composite sportsbook odds for MLB...")
-    sportsbook_odds = fetch_composite_odds(os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273"))
-    print(f"💰 Sportsbook odds received: {len(sportsbook_odds) if sportsbook_odds else 0} games")
-    
-    print("🕐 Building opponent map with timing filters...")
-    opponent_map, game_timing = build_opponent_map_with_timing()
-    print(f"⏰ Game timing data: {len(game_timing)} games checked")
-    
-    eligible_teams = {team for team, is_eligible in game_timing.items() if is_eligible}
-    print(f"✅ Eligible teams (starting soon/in progress): {len(eligible_teams)} - {eligible_teams}")
-    
-    kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
-    kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
-    print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")
+all_sport_dataframes = []
+for sport in sports_to_process:
+    try:
+        print(f"\n🏆 Processing {sport.upper()} opportunities...")
+        sport_df = fetch_sport_opportunities(sport, api_key)
+        if not sport_df.empty:
+            print(f"✅ {sport.upper()}: Found {len(sport_df)} opportunities")
+            all_sport_dataframes.append(sport_df)
+        else:
+            print(f"⚠️ {sport.upper()}: No opportunities found")
+    except Exception as e:
+        print(f"❌ Error processing {sport.upper()}: {e}")
+        continue
+
+if all_sport_dataframes:
+    kalshi_df = pd.concat(all_sport_dataframes, ignore_index=True)
+    print(f"🎯 Combined DataFrame shape: {kalshi_df.shape}")
+    print(f"📊 Sports represented: {kalshi_df['Sport'].value_counts().to_dict()}")
 else:
-    print("🚫 API call limit reached, skipping sportsbook odds fetch")
-    sportsbook_odds = {}
-    opponent_map = {}
-    game_timing = {}
+    print("❌ No opportunities found across any sports")
+    kalshi_df = pd.DataFrame()
 
-composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
+if not kalshi_df.empty:
+    if "Opponent Name" not in kalshi_df.columns:
+        kalshi_df["Opponent Name"] = ""
+    
+    print(f"🎯 Calculating dynamic Kelly multiplier for wager sizing...")
+    dynamic_kelly = get_dynamic_kelly_multiplier()
+    print(f"💰 Using dynamic Kelly multiplier: {dynamic_kelly}")
 
-if game_timing:
-    kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
-    print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")
-kalshi_df["Team Name"] = kalshi_df["Team"].map(team_abbr_to_name)
-kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
+    kalshi_df["$ Wager"] = kalshi_df.apply(
+        lambda row: (
+            f"${round(min(kelly_wager(row['Composite Fair Odds'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
+            if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Decimal Odds (Kalshi)"])
+            else "$0"
+        ),
+        axis=1
+    )
 
-if game_timing:
-    kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
-    print(f"🎯 Filtered Kalshi DataFrame shape: {kalshi_df.shape}")
+    kalshi_df["Kalshi YES Ask (¢)"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int)
+    kalshi_df = kalshi_df.sort_values(by="numeric_edge", ascending=False).reset_index(drop=True)
+else:
+    print("⚠️ Skipping further processing due to empty dataset")
 
-kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
-
-kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
-kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
-
-raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1
-kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
-kalshi_df["numeric_edge"] = raw_edge
-
-print(f"🎯 Calculating dynamic Kelly multiplier for wager sizing...")
-dynamic_kelly = get_dynamic_kelly_multiplier()
-print(f"💰 Using dynamic Kelly multiplier: {dynamic_kelly}")
-
-kalshi_df["$ Wager"] = kalshi_df.apply(
-    lambda row: (
-        f"${round(min(kelly_wager(row['Composite Fair Odds'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
-        if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Decimal Odds (Kalshi)"])
-        else "$0"
-    ),
-    axis=1
-)
-
-kalshi_df["Kalshi YES Ask (¢)"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int)
-kalshi_df = kalshi_df.sort_values(by="numeric_edge", ascending=False).reset_index(drop=True)
 
 def store_odds_timeseries():
     filename = "/home/walkwalkm1/odds_timeseries.json"
@@ -789,6 +786,7 @@ def store_odds_timeseries():
         if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Kalshi %"]):
             data.append({
                 "timestamp": timestamp,
+                "sport": row.get("Sport", "UNKNOWN"),
                 "team": row["Team Name"],
                 "kalshi_implied_odds": row["Kalshi %"],
                 "composite_devigged_odds": 1 / row["Composite Fair Odds"],
@@ -916,8 +914,22 @@ for i, row in filtered_df.iterrows():
     try:
         print(f"\n📋 Order {i+1}/{len(filtered_df)}: {row['Team Name']}")
         
-        team_abbr = [abbr for abbr, name in team_abbr_to_name.items() if name == row["Team Name"]]
-        opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() if name == row["Opponent Name"]]
+        team_abbr = []
+        opp_abbr = []
+        
+        if "Sport" in row and pd.notna(row["Sport"]):
+            sport_prefix = row["Sport"]
+            team_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
+                        if name == row["Team Name"] and (abbr.startswith(f"{sport_prefix}_") or "_" not in abbr)]
+            if pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
+                opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
+                           if name == row["Opponent Name"] and (abbr.startswith(f"{sport_prefix}_") or "_" not in abbr)]
+        
+        if not team_abbr:
+            team_abbr = [abbr for abbr, name in team_abbr_to_name.items() if name == row["Team Name"]]
+        if not opp_abbr and pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
+            opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() if name == row["Opponent Name"]]
+            
         print(f"🔍 Team abbreviations - Team: {team_abbr}, Opponent: {opp_abbr}")
 
         if (team_abbr and team_abbr[0] in executed_team_abbrs) or (opp_abbr and opp_abbr[0] in executed_team_abbrs):
