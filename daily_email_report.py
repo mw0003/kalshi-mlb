@@ -265,18 +265,11 @@ cagr = (today_balance / actual_total_capital) ** (1 / days_since_start) - 1
 # Simulate distribution with 1.3% fee per trade and July 8th capital injection
 decimal_odds = 100 / 186 + 1
 break_even_win_prob = 1 / decimal_odds
-true_win_prob = break_even_win_prob * 1.06
 b = decimal_odds - 1
-p = true_win_prob
-
-expected_value_per_dollar = (p * b) - ((1 - p) * 1) - 0.013
-print(f"Expected Value per $1 bet: ${expected_value_per_dollar:.4f}")
-
-kelly_fraction = (b * p - (1 - p)) / b
-adjusted_kelly = 0.75 * kelly_fraction
 
 capital_injection_day = 24
 capital_injection_amount = 1100
+july_23_cutoff_day = (date(2025, 7, 23) - start_date).days  # Day when edge changes from 1% to 5%
 
 np.random.seed(42)
 final_bankrolls = []
@@ -290,6 +283,17 @@ for _ in range(10000):
         if day == capital_injection_day:
             bank += capital_injection_amount
             total_injected += capital_injection_amount
+        
+        if day < july_23_cutoff_day:
+            edge_multiplier = 1.01  # 1% edge
+        else:
+            edge_multiplier = 1.05  # 5% edge
+            
+        true_win_prob = break_even_win_prob * edge_multiplier
+        p = true_win_prob
+        
+        kelly_fraction = (b * p - (1 - p)) / b
+        adjusted_kelly = 0.75 * kelly_fraction
             
         day_bank = bank
         for _ in range(12):
@@ -302,6 +306,16 @@ for _ in range(10000):
                 
     final_bankrolls.append(bank)
     total_capital_injected.append(total_injected)
+
+current_day = days_since_start - 1
+if current_day < july_23_cutoff_day:
+    current_edge_multiplier = 1.01
+else:
+    current_edge_multiplier = 1.05
+
+current_true_win_prob = break_even_win_prob * current_edge_multiplier
+expected_value_per_dollar = (current_true_win_prob * b) - ((1 - current_true_win_prob) * 1) - 0.013
+print(f"Expected Value per $1 bet (current edge {(current_edge_multiplier-1)*100:.0f}%): ${expected_value_per_dollar:.4f}")
 
 final_bankrolls = np.array(final_bankrolls)
 total_capital_injected = np.array(total_capital_injected)
