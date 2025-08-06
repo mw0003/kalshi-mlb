@@ -115,25 +115,8 @@ print(f"\n💵 Kalshi Balance: ${bankroll:.2f}")
 
 # 📈 Kalshi & FanDuel data
 def fetch_kalshi_mlb_odds_active_only():
-    url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXMLBGAME"
-    headers = {"accept": "application/json"}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    rows = []
-    for market in data.get("markets", []):
-        if market.get("status") != "active":
-            continue
-        parts = market.get("ticker", "").split('-')
-        if len(parts) < 3:
-            continue
-        rows.append({
-            "Market Ticker": market.get("ticker"),
-            "Game Title": market.get("title"),
-            "Team": parts[-1],
-            "Kalshi YES Ask (¢)": market.get("yes_ask")
-        })
-    return pd.DataFrame(rows)
+    """Fetch MLB odds with today-only filtering"""
+    return fetch_kalshi_sport_odds("KXMLBGAME")
 
 def fetch_composite_odds(api_key, sport="baseball_mlb"):
     url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
@@ -428,7 +411,7 @@ def fetch_sport_opportunities(sport, api_key):
     return kalshi_df
 
 def fetch_kalshi_sport_odds(series_ticker):
-    """Generic function to fetch Kalshi odds for any sport series"""
+    """Generic function to fetch Kalshi odds for any sport series - filters for today's games only"""
     url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
     headers = {"accept": "application/json"}
     try:
@@ -436,20 +419,32 @@ def fetch_kalshi_sport_odds(series_ticker):
         response.raise_for_status()
         data = response.json()
         rows = []
+        
+        today_str = today.strftime("%d%b%y").upper()
+        
         for market in data.get("markets", []):
             if market.get("status") != "active":
                 continue
-            parts = market.get("ticker", "").split('-')
+            
+            ticker = market.get("ticker", "")
+            parts = ticker.split('-')
             if len(parts) < 3:
                 continue
+            
+            if today_str not in ticker:
+                continue
+                
             rows.append({
-                "Market Ticker": market.get("ticker"),
+                "Market Ticker": ticker,
                 "Game Title": market.get("title"),
                 "Team": parts[-1],
                 "Kalshi YES Ask (¢)": market.get("yes_ask")
             })
+        
+        print(f"📅 {series_ticker}: Found {len(rows)} markets for today ({today_str})")
         return pd.DataFrame(rows)
-    except:
+    except Exception as e:
+        print(f"❌ Error fetching {series_ticker} markets: {e}")
         return pd.DataFrame()
 
 def devig_soccer_odds(odds_dict):
@@ -557,9 +552,6 @@ for sport in sports_to_process:
 if all_sport_dataframes:
     kalshi_df = pd.concat(all_sport_dataframes, ignore_index=True)
     
-    if not kalshi_df.empty and "Market Ticker" in kalshi_df.columns:
-        today_str = today.strftime("%d%b%y").upper()  # Format: 06AUG25
-        kalshi_df = kalshi_df[kalshi_df["Market Ticker"].str.contains(today_str, na=False)]
     
     print("\n" + "="*80)
     print("📋 FULL MULTI-SPORT DATAFRAME (Today's Games Only)")
@@ -626,21 +618,39 @@ store_odds_timeseries()
 
 kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
 
-final_df = kalshi_df[[
-    "Team Name", "Opponent Name",
-    "Kalshi YES Ask (¢)", "Composite Fair Odds",
-    "% Edge", "$ Wager", "Market Ticker"
-]]
+if kalshi_df.empty:
+    print("⚠️ No betting opportunities found - kalshi_df is empty")
+    final_df = pd.DataFrame(columns=[
+        "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
+        "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"
+    ])
+else:
+    required_columns = ["Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
+                       "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"]
+    missing_columns = [col for col in required_columns if col not in kalshi_df.columns]
+    
+    if missing_columns:
+        print(f"⚠️ Missing required columns: {missing_columns}")
+        print(f"Available columns: {list(kalshi_df.columns)}")
+        final_df = pd.DataFrame(columns=required_columns)
+    else:
+        final_df = kalshi_df[required_columns]
 
 #print("\n📊 Full Table:")
 #display(final_df)
 
-filtered_df = final_df[
-    (final_df["Kalshi YES Ask (¢)"] >= 60) &
-    (final_df["Kalshi YES Ask (¢)"] <= 95) &
-    (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
-    (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
-].reset_index(drop=True)
+if not final_df.empty:
+    filtered_df = final_df[
+        (final_df["Kalshi YES Ask (¢)"] >= 60) &
+        (final_df["Kalshi YES Ask (¢)"] <= 95) &
+        (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
+        (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
+    ].reset_index(drop=True)
+else:
+    filtered_df = pd.DataFrame(columns=[
+        "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
+        "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"
+    ])
 
 print("\n" + "="*80)
 print("🎯 FILTERED DATAFRAME (After Betting Criteria Applied)")
@@ -653,17 +663,20 @@ else:
     print("No opportunities meet the betting criteria")
 print("="*80 + "\n")
 
-seen_teams = set()
-filtered_cleaned = []
-for _, row in filtered_df.iterrows():
-    team = row["Team Name"]
-    opponent = row["Opponent Name"]
-    if opponent in seen_teams:
-        continue
-    seen_teams.add(team)
-    filtered_cleaned.append(row)
-
-filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
+if not filtered_df.empty:
+    seen_teams = set()
+    filtered_cleaned = []
+    for _, row in filtered_df.iterrows():
+        team = row["Team Name"]
+        opponent = row["Opponent Name"]
+        if opponent in seen_teams:
+            continue
+        seen_teams.add(team)
+        filtered_cleaned.append(row)
+    
+    filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
+else:
+    print("⚠️ No opportunities to clean - filtered_df is empty")
 
 # 📥 Get today's orders (Eastern Time aware)
 def get_todays_orders():
