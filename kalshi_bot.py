@@ -29,7 +29,7 @@ from IPython.display import display
 import os
 
 
-# Kalshi Credentials
+# --- Kalshi Credentials ---
 API_KEY = "52080fdd-2c8d-43c5-b98b-914399ce5689"
 RSA_PRIVATE_KEY_PEM = """-----BEGIN RSA PRIVATE KEY-----
 MIIEogIBAAKCAQEApIAcrVGTn1c+Ar2nXZZxEtQYIGG9a6N1XfB6L1MtBARzKuAm
