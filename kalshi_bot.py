@@ -754,6 +754,17 @@ if all_sport_dataframes:
     kalshi_df = pd.concat(all_sport_dataframes, ignore_index=True)
     print(f"🎯 Combined DataFrame shape: {kalshi_df.shape}")
     print(f"📊 Sports represented: {kalshi_df['Sport'].value_counts().to_dict()}")
+    
+    print("\n" + "="*80)
+    print("📋 FULL MULTI-SPORT DATAFRAME (Before Filtering)")
+    print("="*80)
+    if not kalshi_df.empty:
+        display_columns = ["Sport", "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", "Composite Fair Odds", "% Edge", "Market Ticker"]
+        available_columns = [col for col in display_columns if col in kalshi_df.columns]
+        print(kalshi_df[available_columns].to_string(index=False))
+    else:
+        print("No data to display")
+    print("="*80 + "\n")
 else:
     print("❌ No opportunities found across any sports")
     kalshi_df = pd.DataFrame()
@@ -827,6 +838,17 @@ filtered_df = final_df[
     (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
     (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
 ].reset_index(drop=True)
+
+print("\n" + "="*80)
+print("🎯 FILTERED DATAFRAME (After Betting Criteria Applied)")
+print("Criteria: Kalshi Ask 60-95¢, Edge 4-9.1%")
+print("="*80)
+if not filtered_df.empty:
+    print(filtered_df.to_string(index=False))
+    print(f"\n📊 Filtered results: {len(filtered_df)} opportunities from {len(final_df)} total")
+else:
+    print("No opportunities meet the betting criteria")
+print("="*80 + "\n")
 
 seen_teams = set()
 filtered_cleaned = []
