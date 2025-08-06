@@ -155,6 +155,7 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
     
     sportsbook_odds = {"fanduel": {}, "pinnacle": {}, "draftkings": {}}
     bookmaker_counts = {"fanduel": 0, "pinnacle": 0, "draftkings": 0}
+    opponent_map = {}
     
     games_data = response.json()
     print(f"🎯 Received {len(games_data)} games from API")
@@ -167,11 +168,14 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
             print(f"⏭️ Skipping game - not today ({start_time.date()})")
             continue
             
-        now = datetime.now(eastern)
-        time_until_start = (start_time - now).total_seconds() / 3600
-        if time_until_start > 1:
-            print(f"⏰ Skipping game - starts in {time_until_start:.1f} hours (>1 hour)")
-            continue
+        print(f"✅ Including today's game: {game.get('away_team', 'Unknown')} @ {game.get('home_team', 'Unknown')} at {start_time.strftime('%I:%M %p ET')}")
+        
+        away_team = game.get('away_team', '').strip().replace("Oakland Athletics", "Athletics")
+        home_team = game.get('home_team', '').strip().replace("Oakland Athletics", "Athletics")
+        if away_team and home_team:
+            opponent_map[away_team] = home_team
+            opponent_map[home_team] = away_team
+            print(f"🔗 Added opponent mapping: {away_team} ↔ {home_team}")
             
         game_bookmakers = []
         for bookmaker in game.get("bookmakers", []):
@@ -191,8 +195,9 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
         print(f"📚 Bookmakers for this game: {game_bookmakers}")
     
     print(f"📊 Bookmaker coverage: {bookmaker_counts}")
+    print(f"🔗 Opponent map built with {len(opponent_map)} team relationships")
     print(f"✅ Processed odds successfully")
-    return sportsbook_odds
+    return sportsbook_odds, opponent_map
 
 def build_opponent_map_with_timing():
     games = statsapi.schedule(start_date=str(today), end_date=str(today))
@@ -264,13 +269,13 @@ def devig_sportsbook_odds(odds_dict, opponent_map):
     
     return devigged_odds
 
-def devig_composite_odds(sportsbook_odds, opponent_map, weights={"pinnacle": 0.5, "fanduel": 0.25, "draftkings": 0.25}):
+def devig_composite_odds(sportsbook_odds, opponent_map, weights=None):
     """
-    Create composite devigged odds from multiple sportsbooks with weighted averages.
+    Create composite devigged odds from multiple sportsbooks using simple averages.
+    Now uses simple average of available sportsbooks instead of weighted averages.
     """
-    print(f"🧮 Starting composite odds devigging...")
+    print(f"🧮 Starting composite odds devigging with simple averaging...")
     print(f"📊 Processing sportsbooks: {list(sportsbook_odds.keys())}")
-    print(f"⚖️ Using bookmaker weights: {weights}")
     
     devigged_books = {}
     for book, odds_dict in sportsbook_odds.items():
@@ -291,21 +296,20 @@ def devig_composite_odds(sportsbook_odds, opponent_map, weights={"pinnacle": 0.5
     successful_composites = 0
     for team in all_teams:
         print(f"🏷️ Processing team: {team}")
-        weighted_prob = 0
-        total_weight = 0
+        available_probs = []
         
         for book, book_odds in devigged_books.items():
-            if team in book_odds and book in weights:
+            if team in book_odds:
                 prob = 1 / book_odds[team]
-                weighted_prob += prob * weights[book]
-                total_weight += weights[book]
-                print(f"   📊 {book}: prob={prob:.4f}, weight={weights[book]}")
+                available_probs.append(prob)
+                print(f"   📊 {book}: prob={prob:.4f}, odds={book_odds[team]:.4f}")
         
-        if total_weight > 0:
-            final_prob = weighted_prob / total_weight
-            composite_odds[team] = 1 / final_prob
+        if available_probs:
+            # Simple average of available probabilities
+            avg_prob = sum(available_probs) / len(available_probs)
+            composite_odds[team] = 1 / avg_prob
             successful_composites += 1
-            print(f"🎯 Final composite odds for {team}: {composite_odds[team]:.4f}")
+            print(f"🎯 Final composite odds for {team}: {composite_odds[team]:.4f} (avg of {len(available_probs)} books)")
         else:
             print(f"❌ No valid odds for {team}")
     
@@ -449,11 +453,9 @@ def fetch_sport_opportunities(sport, api_key):
     print(f"🎯 Checking API call limit before fetching sportsbook odds...")
     if count_api_call():
         print(f"📡 Fetching composite odds from sportsbooks for {config['api_sport']}...")
-        sportsbook_odds = fetch_composite_odds(api_key, config["api_sport"])
+        sportsbook_odds, opponent_map = fetch_composite_odds(api_key, config["api_sport"])
         print(f"💰 Sportsbook odds keys: {list(sportsbook_odds.keys()) if sportsbook_odds else 'None'}")
-        
-        opponent_map = {}
-        print(f"🔗 Building opponent map for {len(kalshi_df)} teams/players...")
+        print(f"🔗 Opponent map contains {len(opponent_map)} team relationships")
         
         if sport.startswith("tennis"):
             print(f"🎾 Tennis sport detected: {sport} - using dynamic name matching")
@@ -475,6 +477,7 @@ def fetch_sport_opportunities(sport, api_key):
     else:
         print(f"🚫 API call limit reached, skipping sportsbook odds fetch")
         composite_odds = {}
+        opponent_map = {}
     
     print(f"🏷️ Adding sport metadata and calculations...")
     kalshi_df["Sport"] = sport.upper()
