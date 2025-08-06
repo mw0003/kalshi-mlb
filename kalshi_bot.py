@@ -463,8 +463,6 @@ def fetch_sport_opportunities(sport, api_key):
             config["team_map"] = tennis_team_map
             print(f"🎯 Updated tennis team map with {len(tennis_team_map)} matched players")
         
-        for team1, team2 in zip(kalshi_df["Team"], kalshi_df["Team"]):
-            pass
         
         print(f"🧮 Devigging composite odds using {config['market_type']} logic...")
         if config["market_type"] == "3way":
