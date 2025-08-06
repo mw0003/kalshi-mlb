@@ -136,7 +136,6 @@ def fetch_kalshi_mlb_odds_active_only():
     return pd.DataFrame(rows)
 
 def fetch_composite_odds(api_key, sport="baseball_mlb"):
-    print(f"📡 Starting odds fetch for sport: {sport}")
     url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
     params = {
         "regions": "us",
@@ -146,57 +145,37 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
         "apiKey": api_key
     }
     
-    print(f"🌐 Making API request to: {url}")
-    print(f"📋 Request params: {params}")
-    
     response = requests.get(url, params=params)
-    print(f"📊 API response status: {response.status_code}")
     response.raise_for_status()
     
     sportsbook_odds = {"fanduel": {}, "pinnacle": {}, "draftkings": {}}
-    bookmaker_counts = {"fanduel": 0, "pinnacle": 0, "draftkings": 0}
     opponent_map = {}
     
     games_data = response.json()
-    print(f"🎯 Received {len(games_data)} games from API")
+    today_games = 0
     
-    for i, game in enumerate(games_data):
-        print(f"🏟️ Processing game {i+1}: {game.get('away_team', 'Unknown')} @ {game.get('home_team', 'Unknown')}")
-        
+    for game in games_data:
         start_time = pd.to_datetime(game.get("commence_time"), utc=True).tz_convert('US/Eastern')
         if start_time.date() != today:
-            print(f"⏭️ Skipping game - not today ({start_time.date()})")
             continue
             
-        print(f"✅ Including today's game: {game.get('away_team', 'Unknown')} @ {game.get('home_team', 'Unknown')} at {start_time.strftime('%I:%M %p ET')}")
-        
+        today_games += 1
         away_team = game.get('away_team', '').strip().replace("Oakland Athletics", "Athletics")
         home_team = game.get('home_team', '').strip().replace("Oakland Athletics", "Athletics")
         if away_team and home_team:
             opponent_map[away_team] = home_team
             opponent_map[home_team] = away_team
-            print(f"🔗 Added opponent mapping: {away_team} ↔ {home_team}")
             
-        game_bookmakers = []
         for bookmaker in game.get("bookmakers", []):
             book_key = bookmaker["key"]
-            game_bookmakers.append(book_key)
             if book_key in sportsbook_odds:
-                if book_key in bookmaker_counts:
-                    bookmaker_counts[book_key] += 1
-                    
                 market = next((m for m in bookmaker.get("markets", []) if m["key"] == "h2h"), None)
                 if market:
                     for outcome in market.get("outcomes", []):
                         team = outcome["name"].strip().replace("Oakland Athletics", "Athletics")
                         sportsbook_odds[book_key][team] = outcome["price"]
-                        print(f"💰 {book_key}: {team} = {outcome['price']}")
-        
-        print(f"📚 Bookmakers for this game: {game_bookmakers}")
     
-    print(f"📊 Bookmaker coverage: {bookmaker_counts}")
-    print(f"🔗 Opponent map built with {len(opponent_map)} team relationships")
-    print(f"✅ Processed odds successfully")
+    print(f"📊 {sport}: {today_games} games today, {len(opponent_map)//2} matchups processed")
     return sportsbook_odds, opponent_map
 
 def build_opponent_map_with_timing():
@@ -371,11 +350,8 @@ team_abbr_to_name = combined_team_abbr_to_name
 
 def fetch_sport_opportunities(sport, api_key):
     """Fetch opportunities for a specific sport"""
-    print(f"🏆 fetch_sport_opportunities called for sport: {sport}")
     
     tournament_configs = {
-        "wta": "KXWTAMATCH",
-        "atp": "KXATPMATCH",
         "mls": "KXMLSGAME",
     }
     
@@ -398,18 +374,6 @@ def fetch_sport_opportunities(sport, api_key):
             "team_map": wnba_team_abbr_to_name,
             "market_type": "2way"
         },
-        "tennis_wta": {
-            "api_sport": "tennis_wta",
-            "kalshi_series": tournament_configs["wta"],
-            "team_map": {},
-            "market_type": "2way"
-        },
-        "tennis_atp": {
-            "api_sport": "tennis_atp", 
-            "kalshi_series": tournament_configs["atp"],
-            "team_map": {},
-            "market_type": "2way"
-        },
         "soccer_mls": {
             "api_sport": "soccer_usa_mls",
             "kalshi_series": tournament_configs["mls"],
@@ -418,66 +382,36 @@ def fetch_sport_opportunities(sport, api_key):
         }
     }
     
-    print(f"📋 Available sport configs: {list(sport_configs.keys())}")
-    print(f"🎯 Tournament configs available: {list(tournament_configs.keys())}")
-    
     if sport not in sport_configs:
-        print(f"❌ Sport '{sport}' not found in configurations")
         return pd.DataFrame()
     
     config = sport_configs[sport]
-    print(f"⚙️ Using config for {sport}: {config}")
-    print(f"🎮 Market type: {config['market_type']}")
     
-    print(f"📊 Fetching Kalshi odds for {sport}...")
     if sport == "mlb":
         kalshi_df = fetch_kalshi_mlb_odds_active_only()
     else:
         kalshi_df = fetch_kalshi_sport_odds(config["kalshi_series"])
     
-    print(f"📈 Kalshi DataFrame shape: {kalshi_df.shape}")
     if kalshi_df.empty:
-        print(f"⚠️ No Kalshi data found for {sport}")
         return pd.DataFrame()
     
-    print(f"🔍 Pre-filtering markets to optimize API usage...")
     already_bet_teams = get_already_bet_teams()
     kalshi_df, filtered_count = filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams)
     
     if kalshi_df.empty:
-        print(f"⚠️ No remaining markets after filtering already bet teams for {sport}")
         return pd.DataFrame()
     
-    print(f"📊 Remaining markets after pre-filtering: {len(kalshi_df)} (saved {filtered_count} API calls)")
-    
-    print(f"🎯 Checking API call limit before fetching sportsbook odds...")
     if count_api_call():
-        print(f"📡 Fetching composite odds from sportsbooks for {config['api_sport']}...")
         sportsbook_odds, opponent_map = fetch_composite_odds(api_key, config["api_sport"])
-        print(f"💰 Sportsbook odds keys: {list(sportsbook_odds.keys()) if sportsbook_odds else 'None'}")
-        print(f"🔗 Opponent map contains {len(opponent_map)} team relationships")
         
-        if sport.startswith("tennis"):
-            print(f"🎾 Tennis sport detected: {sport} - using dynamic name matching")
-            tennis_team_map = build_tennis_team_map(sportsbook_odds, kalshi_df)
-            config["team_map"] = tennis_team_map
-            print(f"🎯 Updated tennis team map with {len(tennis_team_map)} matched players")
-        
-        
-        print(f"🧮 Devigging composite odds using {config['market_type']} logic...")
         if config["market_type"] == "3way":
-            print(f"⚽ Using 3-way devigging for soccer markets")
             composite_odds = devig_soccer_odds(sportsbook_odds)
         else:
-            print(f"🏀 Using 2-way devigging for standard markets")
             composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
-        print(f"✅ Composite odds calculated: {len(composite_odds)} entries")
     else:
-        print(f"🚫 API call limit reached, skipping sportsbook odds fetch")
         composite_odds = {}
         opponent_map = {}
     
-    print(f"🏷️ Adding sport metadata and calculations...")
     kalshi_df["Sport"] = sport.upper()
     kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
     kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
@@ -485,12 +419,10 @@ def fetch_sport_opportunities(sport, api_key):
     kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
     kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
     
-    print(f"📊 Calculating raw edge for {len(kalshi_df)} opportunities...")
     raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1
     kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
     kalshi_df["numeric_edge"] = raw_edge
     
-    print(f"🎯 Returning {len(kalshi_df)} opportunities for {sport}")
     return kalshi_df
 
 def fetch_kalshi_sport_odds(series_ticker):
@@ -543,100 +475,6 @@ def devig_soccer_odds(odds_dict):
     
     return devigged_odds
 
-def normalize_tennis_player_name(full_name):
-    """
-    Normalize tennis player name to match Kalshi format
-    Tries to extract last name and convert to uppercase
-    Returns None if normalization fails - implements try-match-ignore-mismatch logic
-    """
-    if not full_name or not isinstance(full_name, str):
-        print(f"⚠️ Invalid tennis player name: {full_name}")
-        return None
-    
-    try:
-        name = full_name.strip()
-        
-        if "," in name:
-            last_name = name.split(",")[0].strip()
-            print(f"🎾 Tennis name format detected: Last,First -> '{last_name}'")
-        elif ". " in name:
-            parts = name.split(". ")
-            last_name = parts[-1].strip() if len(parts) > 1 else name
-            print(f"🎾 Tennis name format detected: Initial.Last -> '{last_name}'")
-        else:
-            parts = name.split()
-            last_name = parts[-1] if parts else name
-            print(f"🎾 Tennis name format detected: First Last -> '{last_name}'")
-        
-        normalized = last_name.upper()
-        
-        char_map = {
-            'Ć': 'C', 'Č': 'C', 'Ž': 'Z', 'Š': 'S', 'Đ': 'DJ', 'Ð': 'D',
-            'Ñ': 'N', 'Ü': 'U', 'Ö': 'O', 'Ä': 'A', 'É': 'E',
-            'È': 'E', 'À': 'A', 'Ì': 'I', 'Ò': 'O', 'Ù': 'U'
-        }
-        
-        for original, replacement in char_map.items():
-            normalized = normalized.replace(original, replacement)
-        
-        print(f"🎾 Tennis name normalized: '{full_name}' → '{normalized}'")
-        return normalized
-        
-    except Exception as e:
-        print(f"❌ Error normalizing tennis name '{full_name}': {e} - ignoring mismatch")
-        return None
-
-def match_tennis_player_to_kalshi(odds_player_name, kalshi_markets):
-    """
-    Try to match tennis player name from odds API to Kalshi market
-    Returns matching Kalshi market data or None if no match found
-    Implements try-match-ignore-mismatch logic as requested
-    """
-    normalized_name = normalize_tennis_player_name(odds_player_name)
-    if not normalized_name:
-        print(f"🚫 Could not normalize tennis player name: '{odds_player_name}' - ignoring")
-        return None
-    
-    for _, market_row in kalshi_markets.iterrows():
-        kalshi_team = market_row.get("Team", "")
-        if kalshi_team == normalized_name:
-            print(f"✅ Tennis match found: '{odds_player_name}' → '{kalshi_team}'")
-            return market_row.to_dict()
-    
-    print(f"❌ No Kalshi match for tennis player: '{odds_player_name}' (normalized: '{normalized_name}') - ignoring mismatch")
-    return None
-
-def build_tennis_team_map(sportsbook_odds, kalshi_df):
-    """
-    Build dynamic team map for tennis by attempting to match player names
-    Returns dictionary mapping sportsbook names to Kalshi team codes
-    Implements try-match-ignore-mismatch logic
-    """
-    print(f"🎾 Building tennis team map from {len(sportsbook_odds)} sportsbook entries and {len(kalshi_df)} Kalshi markets")
-    
-    tennis_team_map = {}
-    matches_found = 0
-    mismatches_ignored = 0
-    
-    all_player_names = set()
-    for game_id, odds_data in sportsbook_odds.items():
-        if isinstance(odds_data, dict):
-            all_player_names.update(odds_data.keys())
-    
-    print(f"🔍 Found {len(all_player_names)} unique player names in sportsbook data")
-    
-    for player_name in all_player_names:
-        match = match_tennis_player_to_kalshi(player_name, kalshi_df)
-        if match:
-            tennis_team_map[player_name] = match["Team"]
-            matches_found += 1
-        else:
-            mismatches_ignored += 1
-    
-    print(f"🎯 Tennis team map results: {matches_found} matches found, {mismatches_ignored} mismatches ignored")
-    print(f"📋 Tennis team map: {tennis_team_map}")
-    
-    return tennis_team_map
 
 def get_already_bet_teams():
     """
@@ -693,68 +531,29 @@ def count_api_call():
     print(f"📞 Making API call...")
     return True
 
-def get_eligible_kalshi_markets_count():
-    """Count eligible Kalshi markets across all supported sports"""
-    try:
-        sports_to_process = ["mlb", "nfl", "wnba", "tennis_wta", "tennis_atp"]
-        api_key = os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273")
-        
-        total_count = 0
-        for sport in sports_to_process:
-            try:
-                sport_df = fetch_sport_opportunities(sport, api_key)
-                total_count += len(sport_df)
-            except:
-                continue
-        return total_count
-    except:
-        return 0
-
 def get_dynamic_kelly_multiplier():
-    """Calculate dynamic Kelly multiplier based on available markets"""
-    print(f"🎯 Calculating dynamic Kelly multiplier...")
-    market_count = get_eligible_kalshi_markets_count()
-    print(f"📊 Eligible Kalshi markets count: {market_count}")
-    
-    if market_count < 10:
-        multiplier = 0.75
-        print(f"🔥 High Kelly multiplier (75%) - few markets available ({market_count} < 10)")
-    elif market_count < 20:
-        multiplier = 0.65
-        print(f"📈 Medium-high Kelly multiplier (65%) - moderate markets ({market_count} < 20)")
-    elif market_count < 30:
-        multiplier = 0.60
-        print(f"📊 Medium Kelly multiplier (60%) - good market count ({market_count} < 30)")
-    else:
-        multiplier = 0.50
-        print(f"🎯 Conservative Kelly multiplier (50%) - many markets available ({market_count} >= 30)")
-    
-    return multiplier
+    """Return fixed Kelly multiplier of 0.65"""
+    return 0.65
 
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
 
-sports_to_process = ["mlb", "nfl", "wnba", "tennis_wta", "tennis_atp"]
+sports_to_process = ["mlb", "nfl", "wnba"]
 api_key = os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273")
 
 all_sport_dataframes = []
 for sport in sports_to_process:
     try:
-        print(f"\n🏆 Processing {sport.upper()} opportunities...")
         sport_df = fetch_sport_opportunities(sport, api_key)
         if not sport_df.empty:
-            print(f"✅ {sport.upper()}: Found {len(sport_df)} opportunities")
+            print(f"✅ {sport.upper()}: {len(sport_df)} opportunities")
             all_sport_dataframes.append(sport_df)
-        else:
-            print(f"⚠️ {sport.upper()}: No opportunities found")
     except Exception as e:
         print(f"❌ Error processing {sport.upper()}: {e}")
         continue
 
 if all_sport_dataframes:
     kalshi_df = pd.concat(all_sport_dataframes, ignore_index=True)
-    print(f"🎯 Combined DataFrame shape: {kalshi_df.shape}")
-    print(f"📊 Sports represented: {kalshi_df['Sport'].value_counts().to_dict()}")
     
     print("\n" + "="*80)
     print("📋 FULL MULTI-SPORT DATAFRAME (Before Filtering)")
@@ -767,16 +566,13 @@ if all_sport_dataframes:
         print("No data to display")
     print("="*80 + "\n")
 else:
-    print("❌ No opportunities found across any sports")
     kalshi_df = pd.DataFrame()
 
 if not kalshi_df.empty:
     if "Opponent Name" not in kalshi_df.columns:
         kalshi_df["Opponent Name"] = ""
     
-    print(f"🎯 Calculating dynamic Kelly multiplier for wager sizing...")
     dynamic_kelly = get_dynamic_kelly_multiplier()
-    print(f"💰 Using dynamic Kelly multiplier: {dynamic_kelly}")
 
     kalshi_df["$ Wager"] = kalshi_df.apply(
         lambda row: (
