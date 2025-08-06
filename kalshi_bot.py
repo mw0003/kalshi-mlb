@@ -719,7 +719,7 @@ print(f"📊 MLB Kalshi DataFrame shape: {kalshi_df.shape}")
 print("🎯 Checking API call limit for sportsbook odds...")
 if count_api_call():
     print("📡 Fetching composite sportsbook odds for MLB...")
-    sportsbook_odds = fetch_composite_odds(os.getenv("ODDS_API_KEY", "your-odds-api-key-here"))
+    sportsbook_odds = fetch_composite_odds(os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273"))
     print(f"💰 Sportsbook odds received: {len(sportsbook_odds) if sportsbook_odds else 0} games")
     
     print("🕐 Building opponent map with timing filters...")
