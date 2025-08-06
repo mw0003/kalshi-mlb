@@ -169,7 +169,7 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
             
         now = datetime.now(eastern)
         time_until_start = (start_time - now).total_seconds() / 3600
-        if time_until_start > 1 and time_until_start > 0:
+        if time_until_start > 1:
             print(f"⏰ Skipping game - starts in {time_until_start:.1f} hours (>1 hour)")
             continue
             
@@ -209,8 +209,8 @@ def build_opponent_map_with_timing():
         now = datetime.now(eastern)
         time_until_start = (game_time - now).total_seconds() / 3600  # hours
         
-        is_eligible = (game.get('status') in ['In Progress', 'Live'] or 
-                      (time_until_start <= 1 and time_until_start >= 0))
+        is_eligible = (game.get('status') in ['In Progress', 'Live', 'Final'] or 
+                      time_until_start <= 1)
         
         game_timing[away] = is_eligible
         game_timing[home] = is_eligible
@@ -695,8 +695,17 @@ def count_api_call():
 def get_eligible_kalshi_markets_count():
     """Count eligible Kalshi markets across all supported sports"""
     try:
-        kalshi_df = fetch_kalshi_mlb_odds_active_only()
-        return len(kalshi_df)
+        sports_to_process = ["mlb", "nfl", "wnba", "tennis_wta", "tennis_atp"]
+        api_key = os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273")
+        
+        total_count = 0
+        for sport in sports_to_process:
+            try:
+                sport_df = fetch_sport_opportunities(sport, api_key)
+                total_count += len(sport_df)
+            except:
+                continue
+        return total_count
     except:
         return 0
 
@@ -745,6 +754,17 @@ if all_sport_dataframes:
     kalshi_df = pd.concat(all_sport_dataframes, ignore_index=True)
     print(f"🎯 Combined DataFrame shape: {kalshi_df.shape}")
     print(f"📊 Sports represented: {kalshi_df['Sport'].value_counts().to_dict()}")
+    
+    print("\n" + "="*80)
+    print("📋 FULL MULTI-SPORT DATAFRAME (Before Filtering)")
+    print("="*80)
+    if not kalshi_df.empty:
+        display_columns = ["Sport", "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", "Composite Fair Odds", "% Edge", "Market Ticker"]
+        available_columns = [col for col in display_columns if col in kalshi_df.columns]
+        print(kalshi_df[available_columns].to_string(index=False))
+    else:
+        print("No data to display")
+    print("="*80 + "\n")
 else:
     print("❌ No opportunities found across any sports")
     kalshi_df = pd.DataFrame()
@@ -818,6 +838,17 @@ filtered_df = final_df[
     (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
     (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
 ].reset_index(drop=True)
+
+print("\n" + "="*80)
+print("🎯 FILTERED DATAFRAME (After Betting Criteria Applied)")
+print("Criteria: Kalshi Ask 60-95¢, Edge 4-9.1%")
+print("="*80)
+if not filtered_df.empty:
+    print(filtered_df.to_string(index=False))
+    print(f"\n📊 Filtered results: {len(filtered_df)} opportunities from {len(final_df)} total")
+else:
+    print("No opportunities meet the betting criteria")
+print("="*80 + "\n")
 
 seen_teams = set()
 filtered_cleaned = []
