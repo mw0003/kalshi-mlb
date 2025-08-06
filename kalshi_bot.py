@@ -29,11 +29,11 @@ from IPython.display import display
 import os
 
 
-# 🔐 Kalshi Credentials
-API_KEY = os.getenv("KALSHI_API_KEY", "your-kalshi-api-key-here")
-RSA_PRIVATE_KEY_PEM = os.getenv("KALSHI_RSA_PRIVATE_KEY", """-----BEGIN RSA PRIVATE KEY-----
+# Kalshi Credentials
+API_KEY = "your-kalshi-api-key-here"
+RSA_PRIVATE_KEY_PEM = """-----BEGIN RSA PRIVATE KEY-----
 your-rsa-private-key-here
------END RSA PRIVATE KEY-----""")
+-----END RSA PRIVATE KEY-----"""
 
 # 🔑 Load RSA Key
 private_key = serialization.load_pem_private_key(
