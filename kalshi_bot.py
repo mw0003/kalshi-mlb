@@ -626,21 +626,39 @@ store_odds_timeseries()
 
 kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
 
-final_df = kalshi_df[[
-    "Team Name", "Opponent Name",
-    "Kalshi YES Ask (¢)", "Composite Fair Odds",
-    "% Edge", "$ Wager", "Market Ticker"
-]]
+if kalshi_df.empty:
+    print("⚠️ No betting opportunities found - kalshi_df is empty")
+    final_df = pd.DataFrame(columns=[
+        "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
+        "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"
+    ])
+else:
+    required_columns = ["Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
+                       "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"]
+    missing_columns = [col for col in required_columns if col not in kalshi_df.columns]
+    
+    if missing_columns:
+        print(f"⚠️ Missing required columns: {missing_columns}")
+        print(f"Available columns: {list(kalshi_df.columns)}")
+        final_df = pd.DataFrame(columns=required_columns)
+    else:
+        final_df = kalshi_df[required_columns]
 
 #print("\n📊 Full Table:")
 #display(final_df)
 
-filtered_df = final_df[
-    (final_df["Kalshi YES Ask (¢)"] >= 60) &
-    (final_df["Kalshi YES Ask (¢)"] <= 95) &
-    (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
-    (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
-].reset_index(drop=True)
+if not final_df.empty:
+    filtered_df = final_df[
+        (final_df["Kalshi YES Ask (¢)"] >= 60) &
+        (final_df["Kalshi YES Ask (¢)"] <= 95) &
+        (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
+        (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
+    ].reset_index(drop=True)
+else:
+    filtered_df = pd.DataFrame(columns=[
+        "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
+        "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"
+    ])
 
 print("\n" + "="*80)
 print("🎯 FILTERED DATAFRAME (After Betting Criteria Applied)")
@@ -653,17 +671,20 @@ else:
     print("No opportunities meet the betting criteria")
 print("="*80 + "\n")
 
-seen_teams = set()
-filtered_cleaned = []
-for _, row in filtered_df.iterrows():
-    team = row["Team Name"]
-    opponent = row["Opponent Name"]
-    if opponent in seen_teams:
-        continue
-    seen_teams.add(team)
-    filtered_cleaned.append(row)
-
-filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
+if not filtered_df.empty:
+    seen_teams = set()
+    filtered_cleaned = []
+    for _, row in filtered_df.iterrows():
+        team = row["Team Name"]
+        opponent = row["Opponent Name"]
+        if opponent in seen_teams:
+            continue
+        seen_teams.add(team)
+        filtered_cleaned.append(row)
+    
+    filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
+else:
+    print("⚠️ No opportunities to clean - filtered_df is empty")
 
 # 📥 Get today's orders (Eastern Time aware)
 def get_todays_orders():
