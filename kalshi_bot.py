@@ -91,6 +91,7 @@ def get_balance():
 # 🕒 Date & bankroll
 eastern = pytz.timezone('US/Eastern')
 today = datetime.now(eastern).date()
+now = datetime.now(eastern)
 
 def get_or_cache_daily_bankroll():
     filename = "/home/walkwalkm1/bankroll_cache.json"
@@ -124,14 +125,14 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
         "regions": "us",
         "markets": "h2h",
         "oddsFormat": "american",
-        "bookmakers": "fanduel,pinnacle,draftkings",
+        "bookmakers": "fanduel,draftkings,betmgm,caesars,espnbet",
         "apiKey": api_key
     }
     
     response = requests.get(url, params=params)
     response.raise_for_status()
     
-    sportsbook_odds = {"fanduel": {}, "pinnacle": {}, "draftkings": {}}
+    sportsbook_odds = {"fanduel": {}, "draftkings": {}, "betmgm": {}, "caesars": {}, "espnbet": {}}
     opponent_map = {}
     
     games_data = response.json()
@@ -161,29 +162,42 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
     print(f"📊 {sport}: {today_games} games today, {len(opponent_map)//2} matchups processed")
     return sportsbook_odds, opponent_map
 
-def build_opponent_map_with_timing():
-    games = statsapi.schedule(start_date=str(today), end_date=str(today))
-    matchup = {}
-    game_timing = {}
-    
-    for game in games:
-        away = game['away_name'].replace("Oakland Athletics", "Athletics")
-        home = game['home_name'].replace("Oakland Athletics", "Athletics")
-        matchup[away] = home
-        matchup[home] = away
-        
-        game_time = pd.to_datetime(game['game_datetime']).tz_convert('US/Eastern')
-        now = datetime.now(eastern)
-        time_until_start = (game_time - now).total_seconds() / 3600  # hours
-        
-        is_eligible = (game.get('status') in ['In Progress', 'Live', 'Final'] or 
-                      time_until_start <= 1)
-        
-        game_timing[away] = is_eligible
-        game_timing[home] = is_eligible
-    
-    return matchup, game_timing
+def get_espn_scoreboard_json(league):
+    url = f"https://site.api.espn.com/apis/site/v2/sports/{league}/scoreboard"
+    response = requests.get(url)
+    return response.json()
 
+def parse_games(scoreboard_json):
+    games_today = []
+    today = now.date()
+
+    for event in scoreboard_json.get("events", []):
+        comp = event["competitions"][0]
+        home = comp["competitors"][0] if comp["competitors"][0]["homeAway"] == "home" else comp["competitors"][1]
+        away = comp["competitors"][0] if comp["competitors"][0]["homeAway"] == "away" else comp["competitors"][1]
+        start_time = datetime.fromisoformat(event["date"]).astimezone(eastern)
+        time_until_start = (start_time - now).total_seconds() / 3600
+        status = comp["status"]["type"]["name"].lower()
+        
+        is_today = start_time.date() == today
+        is_eligible = status == "in" or time_until_start <= 1
+
+        if is_today and is_eligible:
+            games_today.append(home["team"]["displayName"])
+            games_today.append(away["team"]["displayName"])
+    
+    return games_today
+
+def get_eligible_teams():
+    leagues = ["baseball/mlb", "football/nfl", "basketball/wnba"]
+    all_teams = set()
+
+    for league in leagues:
+        scoreboard = get_espn_scoreboard_json(league)
+        eligible_teams = parse_games(scoreboard)
+        all_teams.update(eligible_teams)
+
+    return all_teams
 
 def american_to_implied_prob(odds):
     if pd.isna(odds):
@@ -336,10 +350,6 @@ team_abbr_to_name = combined_team_abbr_to_name
 def fetch_sport_opportunities(sport, api_key):
     """Fetch opportunities for a specific sport"""
     
-    tournament_configs = {
-        "mls": "KXMLSGAME",
-    }
-    
     sport_configs = {
         "mlb": {
             "api_sport": "baseball_mlb",
@@ -358,12 +368,6 @@ def fetch_sport_opportunities(sport, api_key):
             "kalshi_series": "KXWNBAGAME", 
             "team_map": wnba_team_abbr_to_name,
             "market_type": "2way"
-        },
-        "soccer_mls": {
-            "api_sport": "soccer_usa_mls",
-            "kalshi_series": tournament_configs["mls"],
-            "team_map": {},
-            "market_type": "3way"
         }
     }
     
@@ -376,6 +380,10 @@ def fetch_sport_opportunities(sport, api_key):
         kalshi_df = fetch_kalshi_mlb_odds_active_only()
     else:
         kalshi_df = fetch_kalshi_sport_odds(config["kalshi_series"])
+        eligible_teams = get_eligible_teams()
+        kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
+        kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+
     
     if kalshi_df.empty:
         return pd.DataFrame()
@@ -404,11 +412,30 @@ def fetch_sport_opportunities(sport, api_key):
     kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
     kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
     
-    raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1
+    # Calculate fee based on Kalshi price
+    kalshi_df["Fee"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int).apply(get_kalshi_fee_rate)
+
+    # Adjusted edge = (Decimal Odds * True Prob) - 1 - Fee
+    raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1 - kalshi_df["Fee"]
+
     kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
     kalshi_df["numeric_edge"] = raw_edge
     
     return kalshi_df
+
+def get_kalshi_fee_rate(price_cents):
+    if 30 <= price_cents <= 40:
+        return 0.016
+    elif 41 <= price_cents <= 59:
+        return 0.017
+    elif 60 <= price_cents <= 69:
+        return 0.016
+    elif 70 <= price_cents <= 79:
+        return 0.0135
+    elif 80 <= price_cents <= 90:
+        return 0.01
+    else:
+        return 0.0  # if you want to ignore prices outside this range
 
 def fetch_kalshi_sport_odds(series_ticker):
     """Generic function to fetch Kalshi odds for any sport series - filters for today's games only"""
@@ -420,7 +447,7 @@ def fetch_kalshi_sport_odds(series_ticker):
         data = response.json()
         rows = []
         
-        today_str = today.strftime("%d%b%y").upper()
+        today_str = today.strftime("%y%b%d").upper()
         
         for market in data.get("markets", []):
             if market.get("status") != "active":
@@ -530,7 +557,7 @@ def count_api_call():
 
 def get_dynamic_kelly_multiplier():
     """Return fixed Kelly multiplier of 0.65"""
-    return 0.65
+    return 0.75
 
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
@@ -616,7 +643,8 @@ def store_odds_timeseries():
 
 store_odds_timeseries()
 
-kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
+if not kalshi_df.empty and "numeric_edge" in kalshi_df.columns:
+    kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
 
 if kalshi_df.empty:
     print("⚠️ No betting opportunities found - kalshi_df is empty")
@@ -641,10 +669,10 @@ else:
 
 if not final_df.empty:
     filtered_df = final_df[
-        (final_df["Kalshi YES Ask (¢)"] >= 60) &
-        (final_df["Kalshi YES Ask (¢)"] <= 95) &
-        (final_df["% Edge"].str.replace('%', '').astype(float) >= 4) &
-        (final_df["% Edge"].str.replace('%', '').astype(float) < 9.1)
+        (final_df["Kalshi YES Ask (¢)"] >= 35) &
+        (final_df["Kalshi YES Ask (¢)"] <= 90) &
+        (final_df["% Edge"].str.replace('%', '').astype(float) >= 3) &
+        (final_df["% Edge"].str.replace('%', '').astype(float) < 15)
     ].reset_index(drop=True)
 else:
     filtered_df = pd.DataFrame(columns=[

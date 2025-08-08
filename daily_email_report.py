@@ -297,7 +297,7 @@ for _ in range(10000):
         if day < july_23_cutoff_day:
             edge_multiplier = 1.01  # 1% edge
         else:
-            edge_multiplier = 1.05  # 5% edge
+            edge_multiplier = 1.04  # 4% edge
             
         true_win_prob = break_even_win_prob * edge_multiplier
         p = true_win_prob
@@ -306,7 +306,7 @@ for _ in range(10000):
         adjusted_kelly = 0.75 * kelly_fraction
             
         day_bank = bank
-        for _ in range(12):
+        for _ in range(7):
             wager = adjusted_kelly * day_bank
             fee = 0.013 * wager
             if np.random.rand() < p:
@@ -422,7 +422,7 @@ email_body = f"""
     <div class="metric">Total Return: <b>{total_return_pct_normalized:.2f}%</b></div>
     <div class="metric">Daily CAGR: <b>{cagr * 100:.2f}%</b></div>
     <div class="metric">Percentile Rank vs Strategy (w/ 1.3% Fee/Trade): <b>{percentile:.1f}%</b></div>
-    <div class="metric"><i>Simulation assumes 12 trades/day with 1.3% fee on each trade.</i></div>
+    <div class="metric"><i>Simulation assumes 7 trades/day with 1.3% fee on each trade.</i></div>
 
 
   </div>

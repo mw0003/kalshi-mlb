@@ -260,3 +260,67 @@ ls
 nano kalshi_bot.py
 crontab -e
 nano kalshi_bot.py
+source ~/kalshi-env/bin/activate
+ls
+git status
+git pull
+git reset --hard
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+pip install -r requirements.txt
+ls
+nano kalshi_bot.py
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+git pull
+python kalshi_bot.py
+source ~/kalshi-env/bin/activate
+python kalshi_bot.py
+nano kalshi_bot.py
+python kalshi_bot.py
+nano kalshi_bot.py
+python kalshi_bot.py
+nano kalshi_bot.py
+python kalshi_bot.py
+nano kalshi_bot.py
+source ~/kalshi-env/bin/activate
+python kalshi_bot.py
+source ~/kalshi-env/bin/activate
+ls
+nano daily_email_report.py
+nano kalshi_bot.py
+python kalshi_bot.py
+source ~/kalshi-env/bin/activate
+python kalshi_bot.py
+nano kalshi_bot.py
+python kalshi_bot.py
+nano kalshi_bot.py
+python kalshi_bot.py
+nano kalshi_bot.py
+python kalshi_bot.py
+pip install espn-api
+nano kalshi_bot.py
+python kalshi_bot.py
+nano kalshi_bot.p
+ls
+nano kalshi_bot.py
