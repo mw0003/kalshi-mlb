@@ -211,6 +211,7 @@ def devig_sportsbook_odds(odds_dict, opponent_map):
     """
     Remove vig from moneyline odds using normalization method.
     """
+    print(f"🔧 Starting sportsbook devigging for {len(odds_dict)} teams")
     devigged_odds = {}
     processed_games = set()
     
@@ -226,6 +227,9 @@ def devig_sportsbook_odds(odds_dict, opponent_map):
         if pd.isna(opponent_odds):
             continue
         
+        print(f"🏈 Processing game: {team} vs {opponent}")
+        print(f"   📊 Raw American odds - {team}: {american_odds}, {opponent}: {opponent_odds}")
+        
         team_implied_prob = american_to_implied_prob(american_odds)
         opponent_implied_prob = american_to_implied_prob(opponent_odds)
         
@@ -233,16 +237,21 @@ def devig_sportsbook_odds(odds_dict, opponent_map):
             continue
         
         total_implied_prob = team_implied_prob + opponent_implied_prob
+        print(f"   🧮 Implied probs - {team}: {team_implied_prob:.4f}, {opponent}: {opponent_implied_prob:.4f}")
+        print(f"   📈 Total implied prob (with vig): {total_implied_prob:.4f} (vig: {(total_implied_prob - 1) * 100:.2f}%)")
         
         team_fair_prob = team_implied_prob / total_implied_prob
         opponent_fair_prob = opponent_implied_prob / total_implied_prob
+        print(f"   ✨ Fair probs after devig - {team}: {team_fair_prob:.4f}, {opponent}: {opponent_fair_prob:.4f}")
         
         devigged_odds[team] = 1 / team_fair_prob
         devigged_odds[opponent] = 1 / opponent_fair_prob
+        print(f"   🎯 Final devigged odds - {team}: {devigged_odds[team]:.4f}, {opponent}: {devigged_odds[opponent]:.4f}")
         
         processed_games.add(team)
         processed_games.add(opponent)
     
+    print(f"✅ Sportsbook devigging complete: {len(devigged_odds)} teams processed")
     return devigged_odds
 
 def devig_composite_odds(sportsbook_odds, opponent_map, weights=None):
@@ -297,9 +306,29 @@ def devig_composite_odds(sportsbook_odds, opponent_map, weights=None):
 def kelly_wager(fair_odds, your_odds, bankroll):
     try:
         if pd.isna(fair_odds) or pd.isna(your_odds):
+            print(f"   ⚠️ Kelly calculation skipped - missing odds (fair: {fair_odds}, your: {your_odds})")
             return 0
-        return max((((1 / fair_odds) * (your_odds - 1)) - (1 - (1 / fair_odds))) / (your_odds - 1) * bankroll, 0)
-    except:
+        
+        print(f"   💰 Kelly calculation inputs:")
+        print(f"      Fair odds: {fair_odds:.4f}")
+        print(f"      Your odds (Kalshi): {your_odds:.4f}")
+        print(f"      Bankroll: ${bankroll:.2f}")
+        
+        fair_prob = 1 / fair_odds
+        edge = (fair_prob * (your_odds - 1)) - (1 - fair_prob)
+        kelly_fraction = edge / (your_odds - 1)
+        kelly_amount = kelly_fraction * bankroll
+        final_amount = max(kelly_amount, 0)
+        
+        print(f"      Fair probability: {fair_prob:.4f}")
+        print(f"      Edge: {edge:.4f}")
+        print(f"      Kelly fraction: {kelly_fraction:.4f}")
+        print(f"      Kelly amount: ${kelly_amount:.2f}")
+        print(f"      Final amount (max 0): ${final_amount:.2f}")
+        
+        return final_amount
+    except Exception as e:
+        print(f"   ❌ Kelly calculation error: {e}")
         return 0
 
 # Team abbreviation maps for different sports
@@ -414,12 +443,44 @@ def fetch_sport_opportunities(sport, api_key):
     
     # Calculate fee based on Kalshi price
     kalshi_df["Fee"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int).apply(get_kalshi_fee_rate)
-
+    
+    print(f"\n🧮 Starting raw edge calculation for {len(kalshi_df)} opportunities...")
+    
     # Adjusted edge = (Decimal Odds * True Prob) - 1 - Fee
-    raw_edge = kalshi_df["Decimal Odds (Kalshi)"] * (1 / kalshi_df["Composite Fair Odds"]) - 1 - kalshi_df["Fee"]
-
+    raw_edge_list = []
+    for idx, row in kalshi_df.iterrows():
+        team_name = row["Team Name"]
+        kalshi_decimal_odds = row["Decimal Odds (Kalshi)"]
+        composite_fair_odds = row["Composite Fair Odds"]
+        fee = row["Fee"]
+        kalshi_price_cents = row["Kalshi YES Ask (¢)"]
+        
+        print(f"\n📊 Edge calculation for {team_name}:")
+        print(f"   💵 Kalshi price: {kalshi_price_cents}¢")
+        print(f"   🎲 Kalshi decimal odds: {kalshi_decimal_odds:.4f}")
+        print(f"   🎯 Composite fair odds: {composite_fair_odds:.4f}")
+        print(f"   💸 Fee rate: {fee:.4f} ({fee * 100:.2f}%)")
+        
+        if pd.notna(composite_fair_odds):
+            true_prob = 1 / composite_fair_odds
+            expected_return = kalshi_decimal_odds * true_prob
+            raw_edge_value = expected_return - 1 - fee
+            
+            print(f"   📈 True probability: {true_prob:.4f}")
+            print(f"   💰 Expected return: {expected_return:.4f}")
+            print(f"   ⚡ Raw edge (before fee): {expected_return - 1:.4f} ({(expected_return - 1) * 100:.2f}%)")
+            print(f"   🎯 Final edge (after fee): {raw_edge_value:.4f} ({raw_edge_value * 100:.2f}%)")
+        else:
+            raw_edge_value = None
+            print(f"   ❌ No composite fair odds available - edge calculation skipped")
+        
+        raw_edge_list.append(raw_edge_value)
+    
+    raw_edge = pd.Series(raw_edge_list, index=kalshi_df.index)
     kalshi_df["% Edge"] = raw_edge.apply(lambda x: f"{round(x * 100, 1)}%" if pd.notna(x) else None)
     kalshi_df["numeric_edge"] = raw_edge
+    
+    print(f"\n✅ Edge calculation complete for {len(kalshi_df)} opportunities")
     
     return kalshi_df
 
@@ -599,14 +660,28 @@ if not kalshi_df.empty:
     
     dynamic_kelly = get_dynamic_kelly_multiplier()
 
-    kalshi_df["$ Wager"] = kalshi_df.apply(
-        lambda row: (
-            f"${round(min(kelly_wager(row['Composite Fair Odds'], row['Decimal Odds (Kalshi)'], bankroll), bankroll * 0.3))}"
-            if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Decimal Odds (Kalshi)"])
-            else "$0"
-        ),
-        axis=1
-    )
+    print(f"\n💰 Calculating Kelly wager amounts for {len(kalshi_df)} opportunities...")
+    
+    wager_amounts = []
+    for idx, row in kalshi_df.iterrows():
+        team_name = row["Team Name"]
+        print(f"\n🎯 Kelly wager calculation for {team_name}:")
+        
+        if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Decimal Odds (Kalshi)"]):
+            kelly_amount = kelly_wager(row['Composite Fair Odds'], row['Decimal Odds (Kalshi)'], bankroll)
+            max_wager = bankroll * 0.3
+            final_wager = min(kelly_amount, max_wager)
+            
+            print(f"   🔒 Max wager cap (30% bankroll): ${max_wager:.2f}")
+            print(f"   ✅ Final wager amount: ${final_wager:.2f}")
+            
+            wager_amounts.append(f"${round(final_wager)}")
+        else:
+            print(f"   ❌ Missing odds data - wager set to $0")
+            wager_amounts.append("$0")
+    
+    kalshi_df["$ Wager"] = wager_amounts
+    print(f"\n✅ Kelly wager calculations complete")
 
     kalshi_df["Kalshi YES Ask (¢)"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int)
     kalshi_df = kalshi_df.sort_values(by="numeric_edge", ascending=False).reset_index(drop=True)
@@ -667,14 +742,33 @@ else:
 #print("\n📊 Full Table:")
 #display(final_df)
 
+print(f"\n🔍 Applying betting criteria filters...")
+print(f"📋 Filter criteria:")
+print(f"   💰 Kalshi price: 35¢ - 90¢")
+print(f"   📈 Edge: 3% - 15%")
+
 if not final_df.empty:
-    filtered_df = final_df[
-        (final_df["Kalshi YES Ask (¢)"] >= 35) &
-        (final_df["Kalshi YES Ask (¢)"] <= 90) &
-        (final_df["% Edge"].str.replace('%', '').astype(float) >= 3) &
-        (final_df["% Edge"].str.replace('%', '').astype(float) < 15)
-    ].reset_index(drop=True)
+    print(f"\n🎯 Filtering {len(final_df)} opportunities...")
+    
+    price_filter = (final_df["Kalshi YES Ask (¢)"] >= 35) & (final_df["Kalshi YES Ask (¢)"] <= 90)
+    edge_filter = (final_df["% Edge"].str.replace('%', '').astype(float) >= 3) & (final_df["% Edge"].str.replace('%', '').astype(float) < 15)
+    
+    print(f"   💵 Price filter passed: {price_filter.sum()}/{len(final_df)} opportunities")
+    print(f"   📊 Edge filter passed: {edge_filter.sum()}/{len(final_df)} opportunities")
+    
+    combined_filter = price_filter & edge_filter
+    print(f"   ✅ Both filters passed: {combined_filter.sum()}/{len(final_df)} opportunities")
+    
+    filtered_df = final_df[combined_filter].reset_index(drop=True)
+    
+    if not filtered_df.empty:
+        print(f"\n📋 Teams passing all filters:")
+        for idx, row in filtered_df.iterrows():
+            print(f"   🏆 {row['Team Name']}: {row['Kalshi YES Ask (¢)']}¢, {row['% Edge']} edge")
+    else:
+        print(f"   ❌ No opportunities passed all filters")
 else:
+    print(f"   ⚠️ No opportunities to filter - final_df is empty")
     filtered_df = pd.DataFrame(columns=[
         "Team Name", "Opponent Name", "Kalshi YES Ask (¢)", 
         "Composite Fair Odds", "% Edge", "$ Wager", "Market Ticker"
@@ -820,17 +914,20 @@ for i, row in filtered_df.iterrows():
         price = int(row["Kalshi YES Ask (¢)"])
         cost_per_contract = price / 100
         suggested_contracts = int(wager_dollars // cost_per_contract)
-        contracts = min(suggested_contracts, int(0.2 * bankroll / cost_per_contract))
+        max_contracts_20pct = int(0.2 * bankroll / cost_per_contract)
+        contracts = min(suggested_contracts, max_contracts_20pct)
         total_cost = contracts * cost_per_contract
         
-        print(f"💰 Wager calculation:")
-        print(f"   Base wager: ${base_wager}")
-        print(f"   Kelly multiplier: {dynamic_kelly}")
-        print(f"   Adjusted wager: ${wager_dollars:.2f}")
-        print(f"   Price per contract: {price}¢")
-        print(f"   Suggested contracts: {suggested_contracts}")
-        print(f"   Final contracts: {contracts}")
-        print(f"   Total cost: ${total_cost:.2f}")
+        print(f"💰 Position sizing calculation:")
+        print(f"   📊 Base Kelly wager: ${base_wager:.2f}")
+        print(f"   🔢 Kelly multiplier: {dynamic_kelly}")
+        print(f"   💵 Adjusted wager: ${wager_dollars:.2f}")
+        print(f"   💰 Price per contract: {price}¢ (${cost_per_contract:.2f})")
+        print(f"   🎯 Suggested contracts (from Kelly): {suggested_contracts}")
+        print(f"   🛡️ Max contracts (20% bankroll limit): {max_contracts_20pct}")
+        print(f"   ✅ Final contracts: {contracts}")
+        print(f"   💸 Total cost: ${total_cost:.2f}")
+        print(f"   📊 Position as % of bankroll: {(total_cost / bankroll) * 100:.2f}%")
 
         if contracts < 1 or total_cost > bankroll:
             print(f"🚫 {team} — Not enough bankroll to place even 1 contract.")
