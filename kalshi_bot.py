@@ -786,16 +786,28 @@ else:
 print("="*80 + "\n")
 
 if not filtered_df.empty:
+    print(f"\n🧹 Cleaning duplicate teams from {len(filtered_df)} opportunities...")
     seen_teams = set()
+    seen_opponents = set()
     filtered_cleaned = []
+    
     for _, row in filtered_df.iterrows():
         team = row["Team Name"]
         opponent = row["Opponent Name"]
-        if opponent in seen_teams:
+        
+        if team in seen_teams or team in seen_opponents:
+            print(f"   🚫 Skipping {team} - already processed this team")
             continue
+        if opponent in seen_teams or opponent in seen_opponents:
+            print(f"   🚫 Skipping {team} vs {opponent} - already processed opponent")
+            continue
+            
         seen_teams.add(team)
+        seen_opponents.add(opponent)
         filtered_cleaned.append(row)
+        print(f"   ✅ Added {team} vs {opponent} - blocking both teams for this game")
     
+    print(f"   📊 Cleaned results: {len(filtered_cleaned)} opportunities from {len(filtered_df)} total")
     filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
 else:
     print("⚠️ No opportunities to clean - filtered_df is empty")
@@ -835,8 +847,19 @@ for order in get_todays_orders():
 print(f"✅ Executed team abbreviations (BUY only): {sorted(executed_team_abbrs)}")
 
 # Map to full team names
-executed_team_names = {team_abbr_to_name[abbr] for abbr in executed_team_abbrs if abbr in team_abbr_to_name}
+executed_team_names = set()
+missing_mappings = []
+
+for abbr in executed_team_abbrs:
+    if abbr in team_abbr_to_name:
+        executed_team_names.add(team_abbr_to_name[abbr])
+    else:
+        missing_mappings.append(abbr)
+
 print(f"✅ Full team names we already bet on: {sorted(executed_team_names)}")
+if missing_mappings:
+    print(f"⚠️ WARNING: Missing team name mappings for abbreviations: {sorted(missing_mappings)}")
+    print(f"   This could allow duplicate betting! Please add these to team_abbr_to_name mapping.")
 
 # Identify rows being filtered out
 if not filtered_df.empty:
@@ -902,9 +925,18 @@ for i, row in filtered_df.iterrows():
                        if name == row["Opponent Name"] and "_" not in abbr]
             
         print(f"🔍 Team abbreviations - Team: {team_abbr}, Opponent: {opp_abbr}")
+        
+        if not team_abbr:
+            print(f"⚠️ WARNING: No abbreviation found for team '{row['Team Name']}' - potential mapping issue!")
+        if not opp_abbr and pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
+            print(f"⚠️ WARNING: No abbreviation found for opponent '{row['Opponent Name']}' - potential mapping issue!")
 
-        if (team_abbr and team_abbr[0] in executed_team_abbrs) or (opp_abbr and opp_abbr[0] in executed_team_abbrs):
-            print(f"⚠️ Skipping {row['Team Name']} vs {row['Opponent Name']} — already bet.")
+        team_already_bet = team_abbr and team_abbr[0] in executed_team_abbrs
+        opp_already_bet = opp_abbr and opp_abbr[0] in executed_team_abbrs
+        
+        if team_already_bet or opp_already_bet:
+            bet_team = team_abbr[0] if team_already_bet else opp_abbr[0]
+            print(f"⚠️ Skipping {row['Team Name']} vs {row['Opponent Name']} — already bet on {bet_team}")
             continue
 
         ticker = row["Market Ticker"]
