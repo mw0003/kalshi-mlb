@@ -334,10 +334,39 @@ wnba_team_abbr_to_name = {
     "GS": "Golden State Valkyries"
 }
 
+epl_team_abbr_to_name = {
+    "LFC": "Liverpool", "BOU": "Bournemouth", "AVL": "Aston Villa", "NEW": "Newcastle United",
+    "ARS": "Arsenal", "CHE": "Chelsea", "MCI": "Manchester City", "MUN": "Manchester United",
+    "TOT": "Tottenham Hotspur", "WHU": "West Ham United", "CRY": "Crystal Palace", "BRI": "Brighton & Hove Albion",
+    "FUL": "Fulham", "WOL": "Wolverhampton Wanderers", "EVE": "Everton", "BRE": "Brentford",
+    "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton"
+}
+
+college_football_team_abbr_to_name = {
+    "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
+    "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
+    "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
+    "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
+    "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
+}
+
+mls_team_abbr_to_name = {
+    "TOR": "Toronto FC", "CLB": "Columbus Crew SC", "NE": "New England Revolution",
+    "LAFC": "Los Angeles FC", "ORL": "Orlando City SC", "SKC": "Sporting Kansas City",
+    "MTL": "CF Montreal", "DCU": "D.C. United", "NYRB": "New York Red Bulls",
+    "PHI": "Philadelphia Union", "MIA": "Inter Miami CF", "LAG": "LA Galaxy",
+    "CLT": "Charlotte FC", "RSL": "Real Salt Lake", "MIN": "Minnesota United FC",
+    "SEA": "Seattle Sounders FC", "CHI": "Chicago Fire", "AUS": "Austin FC",
+    "DAL": "FC Dallas", "STL": "St. Louis City SC"
+}
+
 all_team_mappings = {
     "MLB": mlb_team_abbr_to_name,
     "NFL": nfl_team_abbr_to_name, 
-    "WNBA": wnba_team_abbr_to_name
+    "WNBA": wnba_team_abbr_to_name,
+    "EPL": epl_team_abbr_to_name,
+    "MLS": mls_team_abbr_to_name,
+    "COLLEGE_FOOTBALL": college_football_team_abbr_to_name
 }
 
 combined_team_abbr_to_name = {}
@@ -369,6 +398,24 @@ def fetch_sport_opportunities(sport, api_key):
             "api_sport": "basketball_wnba",
             "kalshi_series": "KXWNBAGAME", 
             "team_map": wnba_team_abbr_to_name,
+            "market_type": "2way"
+        },
+        "epl": {
+            "api_sport": "soccer_epl",
+            "kalshi_series": "KXEPLGAME",
+            "team_map": epl_team_abbr_to_name,
+            "market_type": "3way"
+        },
+        "mls": {
+            "api_sport": "soccer_usa_mls",
+            "kalshi_series": "KXMLSGAME",
+            "team_map": mls_team_abbr_to_name,
+            "market_type": "3way"
+        },
+        "college_football": {
+            "api_sport": "americanfootball_ncaaf",
+            "kalshi_series": "KXNCAAFGAME",
+            "team_map": college_football_team_abbr_to_name,
             "market_type": "2way"
         }
     }
@@ -525,11 +572,12 @@ def devig_soccer_odds(odds_dict):
                 implied_probs[outcome] = prob
                 total_implied_prob += prob
         
-        # Normalize probabilities
+        # Normalize probabilities to remove vig
         if total_implied_prob > 0:
             for outcome, prob in implied_probs.items():
                 fair_prob = prob / total_implied_prob
-                devigged_odds[f"{game_id}_{outcome}"] = 1 / fair_prob
+                fair_decimal_odds = 1 / fair_prob
+                devigged_odds[outcome] = fair_decimal_odds
     
     return devigged_odds
 
@@ -596,7 +644,7 @@ def get_dynamic_kelly_multiplier():
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
 
-sports_to_process = ["mlb", "nfl", "wnba"]
+sports_to_process = ["mlb", "nfl", "wnba", "epl", "mls", "college_football"]
 api_key = ODDS_API_KEY
 
 all_sport_dataframes = []
