@@ -350,11 +350,22 @@ college_football_team_abbr_to_name = {
     "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
 }
 
+mls_team_abbr_to_name = {
+    "TOR": "Toronto FC", "CLB": "Columbus Crew SC", "NE": "New England Revolution",
+    "LAFC": "Los Angeles FC", "ORL": "Orlando City SC", "SKC": "Sporting Kansas City",
+    "MTL": "CF Montreal", "DCU": "D.C. United", "NYRB": "New York Red Bulls",
+    "PHI": "Philadelphia Union", "MIA": "Inter Miami CF", "LAG": "LA Galaxy",
+    "CLT": "Charlotte FC", "RSL": "Real Salt Lake", "MIN": "Minnesota United FC",
+    "SEA": "Seattle Sounders FC", "CHI": "Chicago Fire", "AUS": "Austin FC",
+    "DAL": "FC Dallas", "STL": "St. Louis City SC"
+}
+
 all_team_mappings = {
     "MLB": mlb_team_abbr_to_name,
     "NFL": nfl_team_abbr_to_name, 
     "WNBA": wnba_team_abbr_to_name,
     "EPL": epl_team_abbr_to_name,
+    "MLS": mls_team_abbr_to_name,
     "COLLEGE_FOOTBALL": college_football_team_abbr_to_name
 }
 
@@ -393,6 +404,12 @@ def fetch_sport_opportunities(sport, api_key):
             "api_sport": "soccer_epl",
             "kalshi_series": "KXEPLGAME",
             "team_map": epl_team_abbr_to_name,
+            "market_type": "3way"
+        },
+        "mls": {
+            "api_sport": "soccer_usa_mls",
+            "kalshi_series": "KXMLSGAME",
+            "team_map": mls_team_abbr_to_name,
             "market_type": "3way"
         },
         "college_football": {
@@ -627,7 +644,7 @@ def get_dynamic_kelly_multiplier():
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
 
-sports_to_process = ["mlb", "nfl", "wnba", "epl", "college_football"]
+sports_to_process = ["mlb", "nfl", "wnba", "epl", "mls", "college_football"]
 api_key = ODDS_API_KEY
 
 all_sport_dataframes = []
