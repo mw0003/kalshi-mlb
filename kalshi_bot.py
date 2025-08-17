@@ -649,29 +649,88 @@ def fetch_kalshi_sport_odds(series_ticker):
         print(f"❌ Error fetching {series_ticker} markets: {e}")
         return pd.DataFrame()
 
-def devig_soccer_odds(odds_dict):
+def devig_soccer_odds(sportsbook_odds):
     """Special devigging for soccer 3-way markets (Win/Loss/Draw)"""
+    print(f"🧮 Starting soccer odds devigging with simple averaging...")
+    print(f"📊 Processing sportsbooks: {list(sportsbook_odds.keys())}")
+    
+    devigged_books = {}
+    for book, odds_dict in sportsbook_odds.items():
+        if odds_dict:
+            print(f"📚 Processing {book} with {len(odds_dict)} teams")
+            devigged_books[book] = devig_sportsbook_odds_soccer(odds_dict)
+            print(f"✅ {book} devigged: {len(devigged_books[book])} teams")
+        else:
+            print(f"⚠️ No odds data for {book}")
+    
+    composite_odds = {}
+    all_teams = set()
+    for book_odds in devigged_books.values():
+        all_teams.update(book_odds.keys())
+    
+    print(f"👥 Processing {len(all_teams)} unique teams across all books")
+    
+    successful_composites = 0
+    for team in all_teams:
+        print(f"🏷️ Processing team: {team}")
+        available_probs = []
+        
+        for book, book_odds in devigged_books.items():
+            if team in book_odds:
+                prob = 1 / book_odds[team]
+                available_probs.append(prob)
+                print(f"   📊 {book}: prob={prob:.4f}, odds={book_odds[team]:.4f}")
+        
+        if available_probs:
+            # Simple average of available probabilities
+            avg_prob = sum(available_probs) / len(available_probs)
+            composite_odds[team] = 1 / avg_prob
+            successful_composites += 1
+            print(f"🎯 Final composite odds for {team}: {composite_odds[team]:.4f} (avg of {len(available_probs)} books)")
+        else:
+            print(f"❌ No valid odds for {team}")
+    
+    print(f"📈 Soccer composite devigging summary: {successful_composites}/{len(all_teams)} teams processed successfully")
+    return composite_odds
+
+def devig_sportsbook_odds_soccer(odds_dict):
+    """Devigger for a single sportsbook's 3-way soccer odds"""
+    
+    # Simple approach: treat each set of 3 outcomes as one game
+    teams = list(odds_dict.keys())
+    draw_teams = [t for t in teams if t.lower() == "draw"]
+    non_draw_teams = [t for t in teams if t.lower() != "draw"]
+    
     devigged_odds = {}
     
-    for game_id, outcomes in odds_dict.items():
-        if len(outcomes) != 3:  # Should have home, away, draw
-            continue
+    for draw_team in draw_teams:
+        game_teams = [draw_team]
+        
+        remaining_teams = [t for t in non_draw_teams if t not in game_teams]
+        game_teams.extend(remaining_teams[:2])
+        
+        if len(game_teams) >= 2:  # At least 2 outcomes needed
+            total_implied_prob = 0
+            implied_probs = {}
             
-        total_implied_prob = 0
-        implied_probs = {}
+            for team in game_teams:
+                if team in odds_dict:
+                    american_odds = odds_dict[team]
+                    prob = american_to_implied_prob(american_odds)
+                    if prob is not None:
+                        implied_probs[team] = prob
+                        total_implied_prob += prob
+            
+            # Normalize probabilities to remove vig
+            if total_implied_prob > 0 and len(implied_probs) >= 2:
+                for team, prob in implied_probs.items():
+                    fair_prob = prob / total_implied_prob
+                    fair_decimal_odds = 1 / fair_prob
+                    devigged_odds[team] = fair_decimal_odds
         
-        for outcome, american_odds in outcomes.items():
-            prob = american_to_implied_prob(american_odds)
-            if prob is not None:
-                implied_probs[outcome] = prob
-                total_implied_prob += prob
-        
-        # Normalize probabilities to remove vig
-        if total_implied_prob > 0:
-            for outcome, prob in implied_probs.items():
-                fair_prob = prob / total_implied_prob
-                fair_decimal_odds = 1 / fair_prob
-                devigged_odds[outcome] = fair_decimal_odds
+        for team in game_teams:
+            if team in non_draw_teams:
+                non_draw_teams.remove(team)
     
     return devigged_odds
 
