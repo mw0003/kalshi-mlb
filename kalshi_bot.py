@@ -92,6 +92,17 @@ def fetch_kalshi_mlb_odds_active_only():
     """Fetch MLB odds with today-only filtering"""
     return fetch_kalshi_sport_odds("KXMLBGAME")
 
+def build_opponent_map():
+    """Build opponent mapping for MLB using statsapi"""
+    games = statsapi.schedule(start_date=str(today), end_date=str(today))
+    matchup = {}
+    for game in games:
+        away = game['away_name'].replace("Oakland Athletics", "Athletics")
+        home = game['home_name'].replace("Oakland Athletics", "Athletics")
+        matchup[away] = home
+        matchup[home] = away
+    return matchup
+
 def fetch_composite_odds(api_key, sport="baseball_mlb"):
     url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
     params = {
@@ -456,6 +467,15 @@ def fetch_sport_opportunities(sport, api_key):
     
     kalshi_df["Sport"] = sport.upper()
     kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
+    
+    if config["market_type"] == "2way" and opponent_map:
+        kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
+    elif sport == "mlb":
+        mlb_opponent_map = build_opponent_map()
+        kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(mlb_opponent_map)
+    else:
+        kalshi_df["Opponent Name"] = ""
+    
     kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
     
     kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
@@ -676,9 +696,6 @@ else:
     kalshi_df = pd.DataFrame()
 
 if not kalshi_df.empty:
-    if "Opponent Name" not in kalshi_df.columns:
-        kalshi_df["Opponent Name"] = ""
-    
     dynamic_kelly = get_dynamic_kelly_multiplier()
 
     print(f"\n💰 Calculating Kelly wager amounts for {len(kalshi_df)} opportunities...")
@@ -809,27 +826,28 @@ print("="*80 + "\n")
 if not filtered_df.empty:
     print(f"\n🧹 Cleaning duplicate teams from {len(filtered_df)} opportunities...")
     seen_teams = set()
-    seen_opponents = set()
     filtered_cleaned = []
     
     for _, row in filtered_df.iterrows():
         team = row["Team Name"]
-        opponent = row["Opponent Name"]
+        opponent = row.get("Opponent Name", "")
         
-        if team in seen_teams or team in seen_opponents:
-            print(f"   🚫 Skipping {team} - already processed this team")
+        if opponent in seen_teams:
+            print(f"   🚫 Skipping {team} - already processed opponent {opponent}")
             continue
-        if opponent in seen_teams or opponent in seen_opponents:
-            print(f"   🚫 Skipping {team} vs {opponent} - already processed opponent")
-            continue
-            
+        
         seen_teams.add(team)
-        seen_opponents.add(opponent)
         filtered_cleaned.append(row)
-        print(f"   ✅ Added {team} vs {opponent} - blocking both teams for this game")
+        print(f"   ✅ Added {team} vs {opponent} - blocking {team} for future games")
     
     print(f"   📊 Cleaned results: {len(filtered_cleaned)} opportunities from {len(filtered_df)} total")
     filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
+    
+    if not filtered_df.empty and "% Edge" in filtered_df.columns:
+        filtered_df["numeric_edge_temp"] = filtered_df["% Edge"].str.replace('%', '').astype(float)
+        filtered_df = filtered_df.sort_values(by="numeric_edge_temp", ascending=False).reset_index(drop=True)
+        filtered_df = filtered_df.drop(columns=["numeric_edge_temp"])
+        print(f"   📈 Sorted {len(filtered_df)} opportunities by edge (highest first)")
 else:
     print("⚠️ No opportunities to clean - filtered_df is empty")
 
@@ -859,10 +877,27 @@ for order in get_todays_orders():
         order.get("action") == "buy" and
         order.get("ticker")
     ):
-        parts = order["ticker"].split('-')
+        ticker = order["ticker"]
+        parts = ticker.split('-')
         if len(parts) >= 3:
-            abbr = parts[-1]
-            executed_team_abbrs.add(abbr)
+            raw_abbr = parts[-1]
+            
+            sport_prefix = ""
+            if ticker.startswith("KXMLBGAME"):
+                sport_prefix = "MLB_"
+            elif ticker.startswith("KXNFLGAME"):
+                sport_prefix = "NFL_"
+            elif ticker.startswith("KXWNBAGAME"):
+                sport_prefix = "WNBA_"
+            elif ticker.startswith("KXEPLGAME"):
+                sport_prefix = "EPL_"
+            elif ticker.startswith("KXMLSGAME"):
+                sport_prefix = "MLS_"
+            elif ticker.startswith("KXCFBGAME"):
+                sport_prefix = "CFB_"
+            
+            sport_abbr = f"{sport_prefix}{raw_abbr}" if sport_prefix else raw_abbr
+            executed_team_abbrs.add(sport_abbr)
 
 # 🔍 Debug print to verify which teams are being excluded
 print(f"✅ Executed team abbreviations (BUY only): {sorted(executed_team_abbrs)}")
@@ -898,6 +933,12 @@ if not filtered_df.empty:
         ~filtered_df["Team Name"].isin(executed_team_names) &
         ~filtered_df["Opponent Name"].isin(executed_team_names)
     ].reset_index(drop=True)
+    
+    if not filtered_df.empty and "% Edge" in filtered_df.columns:
+        filtered_df["numeric_edge_temp"] = filtered_df["% Edge"].str.replace('%', '').astype(float)
+        filtered_df = filtered_df.sort_values(by="numeric_edge_temp", ascending=False).reset_index(drop=True)
+        filtered_df = filtered_df.drop(columns=["numeric_edge_temp"])
+        print(f"   📈 Final sort: {len(filtered_df)} opportunities ordered by edge (highest first)")
 
     print("\n📈 Final filtered_df after exclusions:")
     display(filtered_df)
@@ -954,6 +995,13 @@ for i, row in filtered_df.iterrows():
 
         team_already_bet = team_abbr and team_abbr[0] in executed_team_abbrs
         opp_already_bet = opp_abbr and opp_abbr[0] in executed_team_abbrs
+        
+        if not team_already_bet and team_abbr and "_" not in team_abbr[0]:
+            generic_abbr = team_abbr[0]
+            team_already_bet = any(abbr.endswith(f"_{generic_abbr}") for abbr in executed_team_abbrs)
+        if not opp_already_bet and opp_abbr and "_" not in opp_abbr[0]:
+            generic_abbr = opp_abbr[0]
+            opp_already_bet = any(abbr.endswith(f"_{generic_abbr}") for abbr in executed_team_abbrs)
         
         if team_already_bet or opp_already_bet:
             bet_team = team_abbr[0] if team_already_bet else opp_abbr[0]
