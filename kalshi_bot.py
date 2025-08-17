@@ -448,8 +448,6 @@ def fetch_sport_opportunities(sport, api_key):
     if kalshi_df.empty:
         return pd.DataFrame()
     
-    already_bet_teams = get_already_bet_teams()
-    kalshi_df, filtered_count = filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams)
     
     if kalshi_df.empty:
         return pd.DataFrame()
