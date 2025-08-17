@@ -424,7 +424,32 @@ mls_team_abbr_to_name = {
     "SD": "San Diego FC",
     "SJ": "San Jose Earthquakes",
     "VAN": "Vancouver Whitecaps FC",
-    "TIE": "Draw"
+    "TIE": "Draw",
+    "ATL": "Atlanta United FC",
+    "AUS": "Austin FC",
+    "CHA": "Charlotte FC",
+    "CHI": "Chicago Fire FC",
+    "CIN": "FC Cincinnati",
+    "COL": "Colorado Rapids",
+    "CBS": "Columbus Crew",
+    "DC": "D.C. United",
+    "DAL": "FC Dallas",
+    "MIA": "Inter Miami CF",
+    "LAG": "LA Galaxy",
+    "LAF": "Los Angeles FC",
+    "MIN": "Minnesota United FC",
+    "MTL": "CF Montréal",
+    "NYR": "New York Red Bulls",
+    "NE": "New England Revolution",
+    "NYF": "New York City FC",
+    "ORL": "Orlando City SC",
+    "PHI": "Philadelphia Union",
+    "POR": "Portland Timbers",
+    "RSL": "Real Salt Lake",
+    "SEA": "Seattle Sounders FC",
+    "KC": "Sporting Kansas City",
+    "STL": "St. Louis City SC",
+    "TOR": "Toronto FC"
 }
 
 all_team_mappings = {
@@ -696,10 +721,14 @@ def devig_soccer_odds(sportsbook_odds):
 def devig_sportsbook_odds_soccer(odds_dict):
     """Devigger for a single sportsbook's 3-way soccer odds"""
     
+    print(f"🔍 DEBUG: Starting 3-way soccer devigging for {len(odds_dict)} teams")
+    
     # Simple approach: treat each set of 3 outcomes as one game
     teams = list(odds_dict.keys())
     draw_teams = [t for t in teams if t.lower() == "draw"]
     non_draw_teams = [t for t in teams if t.lower() != "draw"]
+    
+    print(f"🔍 DEBUG: Found {len(draw_teams)} draw outcomes and {len(non_draw_teams)} team outcomes")
     
     devigged_odds = {}
     
@@ -709,10 +738,13 @@ def devig_sportsbook_odds_soccer(odds_dict):
         remaining_teams = [t for t in non_draw_teams if t not in game_teams]
         game_teams.extend(remaining_teams[:2])
         
+        print(f"🔍 DEBUG: Processing 3-way game with teams: {game_teams}")
+        
         if len(game_teams) >= 2:  # At least 2 outcomes needed
             total_implied_prob = 0
             implied_probs = {}
             
+            print(f"🔍 DEBUG: Converting American odds to implied probabilities:")
             for team in game_teams:
                 if team in odds_dict:
                     american_odds = odds_dict[team]
@@ -720,18 +752,31 @@ def devig_sportsbook_odds_soccer(odds_dict):
                     if prob is not None:
                         implied_probs[team] = prob
                         total_implied_prob += prob
+                        print(f"   📊 {team}: {american_odds} → {prob:.4f} ({prob*100:.2f}%)")
+            
+            print(f"🔍 DEBUG: Total implied probability (with vig): {total_implied_prob:.4f} ({total_implied_prob*100:.2f}%)")
+            print(f"🔍 DEBUG: Vig amount: {(total_implied_prob - 1.0):.4f} ({(total_implied_prob - 1.0)*100:.2f}%)")
             
             # Normalize probabilities to remove vig
             if total_implied_prob > 0 and len(implied_probs) >= 2:
+                print(f"🔍 DEBUG: Normalizing probabilities to remove vig:")
+                normalized_total = 0
                 for team, prob in implied_probs.items():
                     fair_prob = prob / total_implied_prob
                     fair_decimal_odds = 1 / fair_prob
                     devigged_odds[team] = fair_decimal_odds
+                    normalized_total += fair_prob
+                    print(f"   🎯 {team}: {prob:.4f} → {fair_prob:.4f} ({fair_prob*100:.2f}%) → odds {fair_decimal_odds:.4f}")
+                
+                print(f"🔍 DEBUG: Normalized total probability: {normalized_total:.4f} ({normalized_total*100:.2f}%)")
+            else:
+                print(f"❌ DEBUG: Insufficient data for normalization (total_prob={total_implied_prob}, teams={len(implied_probs)})")
         
         for team in game_teams:
             if team in non_draw_teams:
                 non_draw_teams.remove(team)
     
+    print(f"🔍 DEBUG: Devigging complete. Processed {len(devigged_odds)} outcomes")
     return devigged_odds
 
 
