@@ -92,6 +92,17 @@ def fetch_kalshi_mlb_odds_active_only():
     """Fetch MLB odds with today-only filtering"""
     return fetch_kalshi_sport_odds("KXMLBGAME")
 
+def build_opponent_map():
+    """Build opponent mapping for MLB using statsapi"""
+    games = statsapi.schedule(start_date=str(today), end_date=str(today))
+    matchup = {}
+    for game in games:
+        away = game['away_name'].replace("Oakland Athletics", "Athletics")
+        home = game['home_name'].replace("Oakland Athletics", "Athletics")
+        matchup[away] = home
+        matchup[home] = away
+    return matchup
+
 def fetch_composite_odds(api_key, sport="baseball_mlb"):
     url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
     params = {
@@ -456,6 +467,15 @@ def fetch_sport_opportunities(sport, api_key):
     
     kalshi_df["Sport"] = sport.upper()
     kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
+    
+    if config["market_type"] == "2way" and opponent_map:
+        kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(opponent_map)
+    elif sport == "mlb":
+        mlb_opponent_map = build_opponent_map()
+        kalshi_df["Opponent Name"] = kalshi_df["Team Name"].map(mlb_opponent_map)
+    else:
+        kalshi_df["Opponent Name"] = ""
+    
     kalshi_df["Composite Fair Odds"] = kalshi_df["Team Name"].map(composite_odds)
     
     kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
@@ -676,9 +696,6 @@ else:
     kalshi_df = pd.DataFrame()
 
 if not kalshi_df.empty:
-    if "Opponent Name" not in kalshi_df.columns:
-        kalshi_df["Opponent Name"] = ""
-    
     dynamic_kelly = get_dynamic_kelly_multiplier()
 
     print(f"\n💰 Calculating Kelly wager amounts for {len(kalshi_df)} opportunities...")
@@ -809,24 +826,19 @@ print("="*80 + "\n")
 if not filtered_df.empty:
     print(f"\n🧹 Cleaning duplicate teams from {len(filtered_df)} opportunities...")
     seen_teams = set()
-    seen_opponents = set()
     filtered_cleaned = []
     
     for _, row in filtered_df.iterrows():
         team = row["Team Name"]
-        opponent = row["Opponent Name"]
+        opponent = row.get("Opponent Name", "")
         
-        if team in seen_teams or team in seen_opponents:
-            print(f"   🚫 Skipping {team} - already processed this team")
+        if opponent in seen_teams:
+            print(f"   🚫 Skipping {team} - already processed opponent {opponent}")
             continue
-        if opponent in seen_teams or opponent in seen_opponents:
-            print(f"   🚫 Skipping {team} vs {opponent} - already processed opponent")
-            continue
-            
+        
         seen_teams.add(team)
-        seen_opponents.add(opponent)
         filtered_cleaned.append(row)
-        print(f"   ✅ Added {team} vs {opponent} - blocking both teams for this game")
+        print(f"   ✅ Added {team} vs {opponent} - blocking {team} for future games")
     
     print(f"   📊 Cleaned results: {len(filtered_cleaned)} opportunities from {len(filtered_df)} total")
     filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
