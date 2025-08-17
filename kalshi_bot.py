@@ -197,16 +197,28 @@ def parse_games(scoreboard_json):
     print(f"🎯 DEBUG: Final eligible teams: {games_today}")
     return games_today
 
-def get_eligible_teams():
-    leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa_mls","soccer_epl"]
-    all_teams = set()
-
-    for league in leagues:
+def get_eligible_teams(sport=None):
+    sport_to_league_map = {
+        "mlb": "baseball/mlb",
+        "nfl": "football/nfl", 
+        "wnba": "basketball/wnba",
+        "mls": "soccer/usa_mls",
+        "epl": "soccer_epl",
+        "college_football": "americanfootball_ncaaf"
+    }
+    
+    if sport and sport in sport_to_league_map:
+        league = sport_to_league_map[sport]
         scoreboard = get_espn_scoreboard_json(league)
-        eligible_teams = parse_games(scoreboard)
-        all_teams.update(eligible_teams)
-
-    return all_teams
+        return set(parse_games(scoreboard))
+    else:
+        leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa_mls","soccer_epl"]
+        all_teams = set()
+        for league in leagues:
+            scoreboard = get_espn_scoreboard_json(league)
+            eligible_teams = parse_games(scoreboard)
+            all_teams.update(eligible_teams)
+        return all_teams
 
 def american_to_implied_prob(odds):
     if pd.isna(odds):
@@ -406,13 +418,13 @@ def load_college_football_teams():
 college_football_team_abbr_to_name = load_college_football_teams()
 
 mls_team_abbr_to_name = {
-    "TOR": "Toronto FC", "CLB": "Columbus Crew SC", "NE": "New England Revolution",
-    "LAFC": "Los Angeles FC", "ORL": "Orlando City SC", "SKC": "Sporting Kansas City",
-    "MTL": "CF Montreal", "DCU": "D.C. United", "NYRB": "New York Red Bulls",
-    "PHI": "Philadelphia Union", "MIA": "Inter Miami CF", "LAG": "LA Galaxy",
-    "CLT": "Charlotte FC", "RSL": "Real Salt Lake", "MIN": "Minnesota United FC",
-    "SEA": "Seattle Sounders FC", "CHI": "Chicago Fire", "AUS": "Austin FC",
-    "DAL": "FC Dallas", "STL": "St. Louis City SC"
+    "HOU": "Houston Dynamo FC",
+    "NSH": "Nashville SC", 
+    "NYC": "New York City FC",
+    "SD": "San Diego FC",
+    "SJ": "San Jose Earthquakes",
+    "VAN": "Vancouver Whitecaps FC",
+    "TIE": "Draw"
 }
 
 all_team_mappings = {
@@ -484,8 +496,19 @@ def fetch_sport_opportunities(sport, api_key):
         kalshi_df = fetch_kalshi_mlb_odds_active_only()
     else:
         kalshi_df = fetch_kalshi_sport_odds(config["kalshi_series"])
-        eligible_teams = get_eligible_teams()
+        print(f"🔍 DEBUG: {sport} - Raw Kalshi teams from API: {list(kalshi_df['Team'].unique()) if not kalshi_df.empty else 'No markets'}")
+        
+        if kalshi_df.empty:
+            print(f"🔍 DEBUG: {sport} - No Kalshi markets found, skipping processing")
+            return pd.DataFrame()
+        
+        eligible_teams = get_eligible_teams(sport)
         kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
+        
+        if config["team_map"]:
+            unmapped_teams = kalshi_df[kalshi_df["Team Name"].isna()]["Team"].unique()
+            if len(unmapped_teams) > 0:
+                print(f"🔍 DEBUG: {sport} - Unmapped teams: {list(unmapped_teams)}")
         
         print(f"🔍 DEBUG: {sport} - Before ESPN eligibility filter: {len(kalshi_df)} Kalshi markets")
         print(f"🔍 DEBUG: {sport} - Kalshi teams: {list(kalshi_df['Team Name'].unique())}")
@@ -727,6 +750,10 @@ for sport in sports_to_process:
             all_sport_dataframes.append(sport_df)
     except Exception as e:
         print(f"❌ Error processing {sport.upper()}: {e}")
+        if sport in ["epl", "college_football"]:
+            print(f"🔍 DEBUG: {sport.upper()} error details - Exception type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
         continue
 
 if all_sport_dataframes:
