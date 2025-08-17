@@ -18,6 +18,8 @@ import pandas as pd
 import pytz
 import statsapi
 from datetime import datetime, timedelta
+import json
+import os
 import base64
 import json
 import time as time_module
@@ -166,6 +168,8 @@ def parse_games(scoreboard_json):
     games_today = []
     today = now.date()
 
+    print(f"🔍 DEBUG: Parsing games at {now.strftime('%Y-%m-%d %H:%M:%S ET')}")
+
     for event in scoreboard_json.get("events", []):
         comp = event["competitions"][0]
         home = comp["competitors"][0] if comp["competitors"][0]["homeAway"] == "home" else comp["competitors"][1]
@@ -177,10 +181,20 @@ def parse_games(scoreboard_json):
         is_today = start_time.date() == today
         is_eligible = status == "in" or time_until_start <= 1
 
+        teams_in_game = [home["team"]["displayName"], away["team"]["displayName"]]
+        
+        print(f"  📅 Game: {' vs '.join(teams_in_game)}")
+        print(f"     ⏰ Start: {start_time.strftime('%Y-%m-%d %H:%M:%S ET')} ({time_until_start:.1f}h from now)")
+        print(f"     📊 Status: {status}")
+        print(f"     📅 Is Today: {is_today}")
+        print(f"     ✅ Eligible: {is_eligible} (status='{status}' or time_until_start={time_until_start:.1f}h <= 1)")
+
         if is_today and is_eligible:
             games_today.append(home["team"]["displayName"])
             games_today.append(away["team"]["displayName"])
+            print(f"     ➕ Added teams: {home['team']['displayName']}, {away['team']['displayName']}")
     
+    print(f"🎯 DEBUG: Final eligible teams: {games_today}")
     return games_today
 
 def get_eligible_teams():
@@ -364,13 +378,32 @@ epl_team_abbr_to_name = {
     "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton"
 }
 
-college_football_team_abbr_to_name = {
-    "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
-    "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
-    "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
-    "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
-    "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
-}
+def load_college_football_teams():
+    """Load college football team mappings from JSON file"""
+    json_path = os.path.join(os.path.dirname(__file__), 'college_football_teams.json')
+    try:
+        with open(json_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"⚠️ College football teams JSON not found at {json_path}, using fallback mapping")
+        return {
+            "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
+            "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
+            "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
+            "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
+            "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
+        }
+    except json.JSONDecodeError as e:
+        print(f"⚠️ Error parsing college football teams JSON: {e}, using fallback mapping")
+        return {
+            "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
+            "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
+            "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
+            "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
+            "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
+        }
+
+college_football_team_abbr_to_name = load_college_football_teams()
 
 mls_team_abbr_to_name = {
     "TOR": "Toronto FC", "CLB": "Columbus Crew SC", "NE": "New England Revolution",
@@ -453,7 +486,16 @@ def fetch_sport_opportunities(sport, api_key):
         kalshi_df = fetch_kalshi_sport_odds(config["kalshi_series"])
         eligible_teams = get_eligible_teams()
         kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
+        
+        print(f"🔍 DEBUG: {sport} - Before ESPN eligibility filter: {len(kalshi_df)} Kalshi markets")
+        print(f"🔍 DEBUG: {sport} - Kalshi teams: {list(kalshi_df['Team Name'].unique())}")
+        print(f"🔍 DEBUG: {sport} - ESPN eligible teams: {eligible_teams}")
+        
         kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+        
+        print(f"🔍 DEBUG: {sport} - After ESPN eligibility filter: {len(kalshi_df)} Kalshi markets")
+        if len(kalshi_df) == 0:
+            print(f"🔍 DEBUG: {sport} - All teams were filtered out by ESPN eligibility check")
 
     
     if kalshi_df.empty:
