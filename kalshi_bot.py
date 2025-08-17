@@ -877,10 +877,27 @@ for order in get_todays_orders():
         order.get("action") == "buy" and
         order.get("ticker")
     ):
-        parts = order["ticker"].split('-')
+        ticker = order["ticker"]
+        parts = ticker.split('-')
         if len(parts) >= 3:
-            abbr = parts[-1]
-            executed_team_abbrs.add(abbr)
+            raw_abbr = parts[-1]
+            
+            sport_prefix = ""
+            if ticker.startswith("KXMLBGAME"):
+                sport_prefix = "MLB_"
+            elif ticker.startswith("KXNFLGAME"):
+                sport_prefix = "NFL_"
+            elif ticker.startswith("KXWNBAGAME"):
+                sport_prefix = "WNBA_"
+            elif ticker.startswith("KXEPLGAME"):
+                sport_prefix = "EPL_"
+            elif ticker.startswith("KXMLSGAME"):
+                sport_prefix = "MLS_"
+            elif ticker.startswith("KXCFBGAME"):
+                sport_prefix = "CFB_"
+            
+            sport_abbr = f"{sport_prefix}{raw_abbr}" if sport_prefix else raw_abbr
+            executed_team_abbrs.add(sport_abbr)
 
 # 🔍 Debug print to verify which teams are being excluded
 print(f"✅ Executed team abbreviations (BUY only): {sorted(executed_team_abbrs)}")
@@ -978,6 +995,13 @@ for i, row in filtered_df.iterrows():
 
         team_already_bet = team_abbr and team_abbr[0] in executed_team_abbrs
         opp_already_bet = opp_abbr and opp_abbr[0] in executed_team_abbrs
+        
+        if not team_already_bet and team_abbr and "_" not in team_abbr[0]:
+            generic_abbr = team_abbr[0]
+            team_already_bet = any(abbr.endswith(f"_{generic_abbr}") for abbr in executed_team_abbrs)
+        if not opp_already_bet and opp_abbr and "_" not in opp_abbr[0]:
+            generic_abbr = opp_abbr[0]
+            opp_already_bet = any(abbr.endswith(f"_{generic_abbr}") for abbr in executed_team_abbrs)
         
         if team_already_bet or opp_already_bet:
             bet_team = team_abbr[0] if team_already_bet else opp_abbr[0]
