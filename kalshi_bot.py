@@ -184,7 +184,7 @@ def parse_games(scoreboard_json):
     return games_today
 
 def get_eligible_teams():
-    leagues = ["baseball/mlb", "football/nfl", "basketball/wnba"]
+    leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa_mls","soccer_epl"]
     all_teams = set()
 
     for league in leagues:
@@ -352,7 +352,7 @@ nfl_team_abbr_to_name = {
 wnba_team_abbr_to_name = {
     "ATL": "Atlanta Dream", "CHI": "Chicago Sky", "CONN": "Connecticut Sun", "DAL": "Dallas Wings",
     "IND": "Indiana Fever", "LV": "Las Vegas Aces", "MIN": "Minnesota Lynx", "NY": "New York Liberty",
-    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WAS": "Washington Mystics", "LA": "Los Angeles Sparks",
+    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WSH": "Washington Mystics", "LA": "Los Angeles Sparks",
     "GS": "Golden State Valkyries"
 }
 
@@ -659,7 +659,7 @@ def filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams):
     
     return filtered_df, filtered_count
 
-testing_mode = True  # Set to False for production
+testing_mode = False  # Set to False for production
 
 def count_api_call():
     """Track API calls for logging purposes - no artificial limits in production"""
@@ -668,7 +668,7 @@ def count_api_call():
 
 def get_dynamic_kelly_multiplier():
     """Return fixed Kelly multiplier of 0.65"""
-    return 0.75
+    return 0.5
 
 print("🚀 Starting multi-sport betting bot...")
 print(f"🧪 Testing mode: {testing_mode}")
