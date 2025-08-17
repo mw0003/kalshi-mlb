@@ -203,7 +203,7 @@ def get_eligible_teams(sport=None):
         "nfl": "football/nfl", 
         "wnba": "basketball/wnba",
         "mls": "soccer/usa.1",
-        "epl": "soccer_epl",
+        "epl": "soccer/eng.1",
         "college_football": "americanfootball_ncaaf"
     }
     
@@ -212,7 +212,7 @@ def get_eligible_teams(sport=None):
         scoreboard = get_espn_scoreboard_json(league)
         return set(parse_games(scoreboard))
     else:
-        leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa.1","soccer_epl"]
+        leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa.1","soccer/eng.1"]
         all_teams = set()
         for league in leagues:
             scoreboard = get_espn_scoreboard_json(league)
