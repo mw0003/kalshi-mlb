@@ -842,6 +842,12 @@ if not filtered_df.empty:
     
     print(f"   📊 Cleaned results: {len(filtered_cleaned)} opportunities from {len(filtered_df)} total")
     filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
+    
+    if not filtered_df.empty and "% Edge" in filtered_df.columns:
+        filtered_df["numeric_edge_temp"] = filtered_df["% Edge"].str.replace('%', '').astype(float)
+        filtered_df = filtered_df.sort_values(by="numeric_edge_temp", ascending=False).reset_index(drop=True)
+        filtered_df = filtered_df.drop(columns=["numeric_edge_temp"])
+        print(f"   📈 Sorted {len(filtered_df)} opportunities by edge (highest first)")
 else:
     print("⚠️ No opportunities to clean - filtered_df is empty")
 
@@ -910,6 +916,12 @@ if not filtered_df.empty:
         ~filtered_df["Team Name"].isin(executed_team_names) &
         ~filtered_df["Opponent Name"].isin(executed_team_names)
     ].reset_index(drop=True)
+    
+    if not filtered_df.empty and "% Edge" in filtered_df.columns:
+        filtered_df["numeric_edge_temp"] = filtered_df["% Edge"].str.replace('%', '').astype(float)
+        filtered_df = filtered_df.sort_values(by="numeric_edge_temp", ascending=False).reset_index(drop=True)
+        filtered_df = filtered_df.drop(columns=["numeric_edge_temp"])
+        print(f"   📈 Final sort: {len(filtered_df)} opportunities ordered by edge (highest first)")
 
     print("\n📈 Final filtered_df after exclusions:")
     display(filtered_df)
