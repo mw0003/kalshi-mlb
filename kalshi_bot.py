@@ -92,6 +92,17 @@ def fetch_kalshi_mlb_odds_active_only():
     """Fetch MLB odds with today-only filtering"""
     return fetch_kalshi_sport_odds("KXMLBGAME")
 
+def extract_event_id(ticker):
+    """Extract event ID from ticker by removing team abbreviation
+    Example: KXMLBGAME-25AUG17PITCHC-CHC -> KXMLBGAME-25AUG17PITCHC
+    """
+    if not ticker:
+        return ""
+    parts = ticker.split('-')
+    if len(parts) >= 3:
+        return '-'.join(parts[:-1])
+    return ticker
+
 def build_opponent_map():
     """Build opponent mapping for MLB using statsapi"""
     games = statsapi.schedule(start_date=str(today), end_date=str(today))
@@ -822,21 +833,22 @@ else:
 print("="*80 + "\n")
 
 if not filtered_df.empty:
-    print(f"\n🧹 Cleaning duplicate teams from {len(filtered_df)} opportunities...")
-    seen_teams = set()
+    print(f"\n🧹 Cleaning duplicate events from {len(filtered_df)} opportunities...")
+    seen_events = set()
     filtered_cleaned = []
     
     for _, row in filtered_df.iterrows():
         team = row["Team Name"]
         opponent = row.get("Opponent Name", "")
+        event_id = extract_event_id(row["Market Ticker"])
         
-        if opponent in seen_teams:
-            print(f"   🚫 Skipping {team} - already processed opponent {opponent}")
+        if event_id in seen_events:
+            print(f"   🚫 Skipping {team} - already processed event {event_id}")
             continue
         
-        seen_teams.add(team)
+        seen_events.add(event_id)
         filtered_cleaned.append(row)
-        print(f"   ✅ Added {team} vs {opponent} - blocking {team} for future games")
+        print(f"   ✅ Added {team} vs {opponent} - blocking event {event_id}")
     
     print(f"   📊 Cleaned results: {len(filtered_cleaned)} opportunities from {len(filtered_df)} total")
     filtered_df = pd.DataFrame(filtered_cleaned).reset_index(drop=True)
@@ -867,8 +879,8 @@ def get_todays_orders():
     response.raise_for_status()
     return response.json().get("orders", [])
 
-# 🚫 Exclude previously bet games (buy-only)
-executed_team_abbrs = set()
+# 🚫 Exclude previously bet events (buy-only)
+executed_event_ids = set()
 for order in get_todays_orders():
     if (
         order.get("status") in ("executed","resting") and
@@ -876,61 +888,31 @@ for order in get_todays_orders():
         order.get("ticker")
     ):
         ticker = order["ticker"]
-        parts = ticker.split('-')
-        if len(parts) >= 3:
-            raw_abbr = parts[-1]
-            
-            sport_prefix = ""
-            if ticker.startswith("KXMLBGAME"):
-                sport_prefix = "MLB_"
-            elif ticker.startswith("KXNFLGAME"):
-                sport_prefix = "NFL_"
-            elif ticker.startswith("KXWNBAGAME"):
-                sport_prefix = "WNBA_"
-            elif ticker.startswith("KXEPLGAME"):
-                sport_prefix = "EPL_"
-            elif ticker.startswith("KXMLSGAME"):
-                sport_prefix = "MLS_"
-            elif ticker.startswith("KXCFBGAME"):
-                sport_prefix = "CFB_"
-            
-            sport_abbr = f"{sport_prefix}{raw_abbr}" if sport_prefix else raw_abbr
-            executed_team_abbrs.add(sport_abbr)
+        event_id = extract_event_id(ticker)
+        if event_id:
+            executed_event_ids.add(event_id)
 
-# 🔍 Debug print to verify which teams are being excluded
-print(f"✅ Executed team abbreviations (BUY only): {sorted(executed_team_abbrs)}")
-
-# Map to full team names
-executed_team_names = set()
-missing_mappings = []
-
-for abbr in executed_team_abbrs:
-    if abbr in team_abbr_to_name:
-        executed_team_names.add(team_abbr_to_name[abbr])
-    else:
-        missing_mappings.append(abbr)
-
-print(f"✅ Full team names we already bet on: {sorted(executed_team_names)}")
-if missing_mappings:
-    print(f"⚠️ WARNING: Missing team name mappings for abbreviations: {sorted(missing_mappings)}")
-    print(f"   This could allow duplicate betting! Please add these to team_abbr_to_name mapping.")
+# 🔍 Debug print to verify which events are being excluded
+print(f"✅ Executed event IDs (BUY only): {sorted(executed_event_ids)}")
 
 # Identify rows being filtered out
 if not filtered_df.empty:
+    filtered_df["Event ID"] = filtered_df["Market Ticker"].apply(extract_event_id)
+    
     flagged_rows = filtered_df[
-        filtered_df["Team Name"].isin(executed_team_names) |
-        filtered_df["Opponent Name"].isin(executed_team_names)
+        filtered_df["Event ID"].isin(executed_event_ids)
     ]
 
-    print(f"\n🚫 Rows removed due to duplicate or opponent bets: {len(flagged_rows)}")
+    print(f"\n🚫 Rows removed due to duplicate event bets: {len(flagged_rows)}")
     if not flagged_rows.empty:
-        display(flagged_rows[["Team Name", "Opponent Name", "Market Ticker"]])
+        display(flagged_rows[["Team Name", "Opponent Name", "Market Ticker", "Event ID"]])
 
     # Apply the actual filtering
     filtered_df = filtered_df[
-        ~filtered_df["Team Name"].isin(executed_team_names) &
-        ~filtered_df["Opponent Name"].isin(executed_team_names)
+        ~filtered_df["Event ID"].isin(executed_event_ids)
     ].reset_index(drop=True)
+    
+    filtered_df = filtered_df.drop(columns=["Event ID"])
     
     if not filtered_df.empty and "% Edge" in filtered_df.columns:
         filtered_df["numeric_edge_temp"] = filtered_df["% Edge"].str.replace('%', '').astype(float)
@@ -966,44 +948,10 @@ for i, row in filtered_df.iterrows():
     try:
         print(f"\n📋 Order {i+1}/{len(filtered_df)}: {row['Team Name']}")
         
-        team_abbr = []
-        opp_abbr = []
+        current_event_id = extract_event_id(row["Market Ticker"])
         
-        if "Sport" in row and pd.notna(row["Sport"]):
-            sport_prefix = row["Sport"]
-            team_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
-                        if name == row["Team Name"] and abbr.startswith(f"{sport_prefix}_")]
-            if pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
-                opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
-                           if name == row["Opponent Name"] and abbr.startswith(f"{sport_prefix}_")]
-        
-        if not team_abbr:
-            team_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
-                        if name == row["Team Name"] and "_" not in abbr]
-        if not opp_abbr and pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
-            opp_abbr = [abbr for abbr, name in team_abbr_to_name.items() 
-                       if name == row["Opponent Name"] and "_" not in abbr]
-            
-        print(f"🔍 Team abbreviations - Team: {team_abbr}, Opponent: {opp_abbr}")
-        
-        if not team_abbr:
-            print(f"⚠️ WARNING: No abbreviation found for team '{row['Team Name']}' - potential mapping issue!")
-        if not opp_abbr and pd.notna(row["Opponent Name"]) and row["Opponent Name"]:
-            print(f"⚠️ WARNING: No abbreviation found for opponent '{row['Opponent Name']}' - potential mapping issue!")
-
-        team_already_bet = team_abbr and team_abbr[0] in executed_team_abbrs
-        opp_already_bet = opp_abbr and opp_abbr[0] in executed_team_abbrs
-        
-        if not team_already_bet and team_abbr and "_" not in team_abbr[0]:
-            generic_abbr = team_abbr[0]
-            team_already_bet = any(abbr.endswith(f"_{generic_abbr}") for abbr in executed_team_abbrs)
-        if not opp_already_bet and opp_abbr and "_" not in opp_abbr[0]:
-            generic_abbr = opp_abbr[0]
-            opp_already_bet = any(abbr.endswith(f"_{generic_abbr}") for abbr in executed_team_abbrs)
-        
-        if team_already_bet or opp_already_bet:
-            bet_team = team_abbr[0] if team_already_bet else opp_abbr[0]
-            print(f"⚠️ Skipping {row['Team Name']} vs {row['Opponent Name']} — already bet on {bet_team}")
+        if current_event_id in executed_event_ids:
+            print(f"⚠️ Skipping {row['Team Name']} vs {row['Opponent Name']} — already bet on event {current_event_id}")
             continue
 
         ticker = row["Market Ticker"]
