@@ -600,32 +600,32 @@ def devig_soccer_odds(odds_dict):
     return devigged_odds
 
 
-def get_already_bet_teams():
-    """
-    Get teams/players we've already bet on today to avoid duplicate API calls
-    Returns set of team abbreviations from executed orders
-    """
-    print(f"🔍 Checking for already bet teams to optimize API calls...")
-    
-    try:
-        executed_team_abbrs = set()
-        for order in get_todays_orders():
-            if (
-                order.get("status") in ("executed", "resting") and
-                order.get("action") == "buy" and
-                order.get("ticker")
-            ):
-                parts = order["ticker"].split('-')
-                if len(parts) >= 3:
-                    abbr = parts[-1]
-                    executed_team_abbrs.add(abbr)
-        
-        print(f"✅ Found {len(executed_team_abbrs)} already bet teams: {sorted(executed_team_abbrs)}")
-        return executed_team_abbrs
-        
-    except Exception as e:
-        print(f"⚠️ Error fetching today's orders: {e} - proceeding without pre-filtering")
-        return set()
+# def get_already_bet_teams():
+#     """
+#     Get teams/players we've already bet on today to avoid duplicate API calls
+#     Returns set of team abbreviations from executed orders
+#     """
+#     print(f"🔍 Checking for already bet teams to optimize API calls...")
+#     
+#     try:
+#         executed_team_abbrs = set()
+#         for order in get_todays_orders():
+#             if (
+#                 order.get("status") in ("executed", "resting") and
+#                 order.get("action") == "buy" and
+#                 order.get("ticker")
+#             ):
+#                 parts = order["ticker"].split('-')
+#                 if len(parts) >= 3:
+#                     abbr = parts[-1]
+#                     executed_team_abbrs.add(abbr)
+#         
+#         print(f"✅ Found {len(executed_team_abbrs)} already bet teams: {sorted(executed_team_abbrs)}")
+#         return executed_team_abbrs
+#         
+#     except Exception as e:
+#         print(f"⚠️ Error fetching today's orders: {e} - proceeding without pre-filtering")
+#         return set()
 
 def filter_kalshi_markets_by_existing_bets(kalshi_df, already_bet_teams):
     """
