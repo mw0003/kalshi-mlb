@@ -418,7 +418,7 @@ def load_college_football_teams():
 college_football_team_abbr_to_name = load_college_football_teams()
 
 mls_team_abbr_to_name = {
-    "HOU": "Houston Dynamo FC",
+    "HOU": "Houston Dynamo",
     "NSH": "Nashville SC", 
     "NYC": "New York City FC",
     "SD": "San Diego FC",
@@ -428,17 +428,17 @@ mls_team_abbr_to_name = {
     "ATL": "Atlanta United FC",
     "AUS": "Austin FC",
     "CHA": "Charlotte FC",
-    "CHI": "Chicago Fire FC",
+    "CHI": "Chicago Fire",
     "CIN": "FC Cincinnati",
     "COL": "Colorado Rapids",
-    "CBS": "Columbus Crew",
+    "CBS": "Columbus Crew SC",
     "DC": "D.C. United",
     "DAL": "FC Dallas",
     "MIA": "Inter Miami CF",
     "LAG": "LA Galaxy",
     "LAF": "Los Angeles FC",
     "MIN": "Minnesota United FC",
-    "MTL": "CF Montréal",
+    "MTL": "CF Montreal",
     "NYR": "New York Red Bulls",
     "NE": "New England Revolution",
     "NYF": "New York City FC",
@@ -539,7 +539,27 @@ def fetch_sport_opportunities(sport, api_key):
         print(f"🔍 DEBUG: {sport} - Kalshi teams: {list(kalshi_df['Team Name'].unique())}")
         print(f"🔍 DEBUG: {sport} - ESPN eligible teams: {eligible_teams}")
         
-        kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+        if sport == "mls":
+            espn_to_our_mapping = {}
+            for our_team in kalshi_df["Team Name"].unique():
+                if pd.isna(our_team):
+                    continue
+                for espn_team in eligible_teams:
+                    if our_team == espn_team:
+                        espn_to_our_mapping[espn_team] = our_team
+                    elif our_team.replace(" FC", "") == espn_team.replace(" FC", ""):
+                        espn_to_our_mapping[espn_team] = our_team
+                    elif "Whitecaps" in our_team and "Whitecaps" in espn_team:
+                        espn_to_our_mapping[espn_team] = our_team
+                    elif "Dynamo" in our_team and "Dynamo" in espn_team:
+                        espn_to_our_mapping[espn_team] = our_team
+            
+            print(f"🔍 DEBUG: {sport} - ESPN to Our team mapping: {espn_to_our_mapping}")
+            
+            eligible_our_teams = set(espn_to_our_mapping.values())
+            kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_our_teams)].reset_index(drop=True)
+        else:
+            kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
         
         print(f"🔍 DEBUG: {sport} - After ESPN eligibility filter: {len(kalshi_df)} Kalshi markets")
         if len(kalshi_df) == 0:
