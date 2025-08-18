@@ -418,7 +418,7 @@ def load_college_football_teams():
 college_football_team_abbr_to_name = load_college_football_teams()
 
 mls_team_abbr_to_name = {
-    "HOU": "Houston Dynamo FC",
+    "HOU": "Houston Dynamo",
     "NSH": "Nashville SC", 
     "NYC": "New York City FC",
     "SD": "San Diego FC",
@@ -428,17 +428,17 @@ mls_team_abbr_to_name = {
     "ATL": "Atlanta United FC",
     "AUS": "Austin FC",
     "CHA": "Charlotte FC",
-    "CHI": "Chicago Fire FC",
+    "CHI": "Chicago Fire",
     "CIN": "FC Cincinnati",
     "COL": "Colorado Rapids",
-    "CBS": "Columbus Crew",
+    "CBS": "Columbus Crew SC",
     "DC": "D.C. United",
     "DAL": "FC Dallas",
     "MIA": "Inter Miami CF",
     "LAG": "LA Galaxy",
     "LAF": "Los Angeles FC",
     "MIN": "Minnesota United FC",
-    "MTL": "CF Montréal",
+    "MTL": "CF Montreal",
     "NYR": "New York Red Bulls",
     "NE": "New England Revolution",
     "NYF": "New York City FC",
@@ -539,7 +539,27 @@ def fetch_sport_opportunities(sport, api_key):
         print(f"🔍 DEBUG: {sport} - Kalshi teams: {list(kalshi_df['Team Name'].unique())}")
         print(f"🔍 DEBUG: {sport} - ESPN eligible teams: {eligible_teams}")
         
-        kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
+        if sport == "mls":
+            espn_to_our_mapping = {}
+            for our_team in kalshi_df["Team Name"].unique():
+                if pd.isna(our_team):
+                    continue
+                for espn_team in eligible_teams:
+                    if our_team == espn_team:
+                        espn_to_our_mapping[espn_team] = our_team
+                    elif our_team.replace(" FC", "") == espn_team.replace(" FC", ""):
+                        espn_to_our_mapping[espn_team] = our_team
+                    elif "Whitecaps" in our_team and "Whitecaps" in espn_team:
+                        espn_to_our_mapping[espn_team] = our_team
+                    elif "Dynamo" in our_team and "Dynamo" in espn_team:
+                        espn_to_our_mapping[espn_team] = our_team
+            
+            print(f"🔍 DEBUG: {sport} - ESPN to Our team mapping: {espn_to_our_mapping}")
+            
+            eligible_our_teams = set(espn_to_our_mapping.values())
+            kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_our_teams)].reset_index(drop=True)
+        else:
+            kalshi_df = kalshi_df[kalshi_df["Team Name"].isin(eligible_teams)].reset_index(drop=True)
         
         print(f"🔍 DEBUG: {sport} - After ESPN eligibility filter: {len(kalshi_df)} Kalshi markets")
         if len(kalshi_df) == 0:
@@ -723,58 +743,39 @@ def devig_sportsbook_odds_soccer(odds_dict):
     
     print(f"🔍 DEBUG: Starting 3-way soccer devigging for {len(odds_dict)} teams")
     
-    # Simple approach: treat each set of 3 outcomes as one game
     teams = list(odds_dict.keys())
     draw_teams = [t for t in teams if t.lower() == "draw"]
     non_draw_teams = [t for t in teams if t.lower() != "draw"]
     
     print(f"🔍 DEBUG: Found {len(draw_teams)} draw outcomes and {len(non_draw_teams)} team outcomes")
+    print(f"🔍 DEBUG: All teams to process: {teams}")
     
     devigged_odds = {}
     
-    for draw_team in draw_teams:
-        game_teams = [draw_team]
-        
-        remaining_teams = [t for t in non_draw_teams if t not in game_teams]
-        game_teams.extend(remaining_teams[:2])
-        
-        print(f"🔍 DEBUG: Processing 3-way game with teams: {game_teams}")
-        
-        if len(game_teams) >= 2:  # At least 2 outcomes needed
-            total_implied_prob = 0
-            implied_probs = {}
-            
-            print(f"🔍 DEBUG: Converting American odds to implied probabilities:")
-            for team in game_teams:
-                if team in odds_dict:
-                    american_odds = odds_dict[team]
-                    prob = american_to_implied_prob(american_odds)
-                    if prob is not None:
-                        implied_probs[team] = prob
-                        total_implied_prob += prob
-                        print(f"   📊 {team}: {american_odds} → {prob:.4f} ({prob*100:.2f}%)")
-            
-            print(f"🔍 DEBUG: Total implied probability (with vig): {total_implied_prob:.4f} ({total_implied_prob*100:.2f}%)")
-            print(f"🔍 DEBUG: Vig amount: {(total_implied_prob - 1.0):.4f} ({(total_implied_prob - 1.0)*100:.2f}%)")
-            
-            # Normalize probabilities to remove vig
-            if total_implied_prob > 0 and len(implied_probs) >= 2:
-                print(f"🔍 DEBUG: Normalizing probabilities to remove vig:")
-                normalized_total = 0
-                for team, prob in implied_probs.items():
-                    fair_prob = prob / total_implied_prob
-                    fair_decimal_odds = 1 / fair_prob
-                    devigged_odds[team] = fair_decimal_odds
-                    normalized_total += fair_prob
-                    print(f"   🎯 {team}: {prob:.4f} → {fair_prob:.4f} ({fair_prob*100:.2f}%) → odds {fair_decimal_odds:.4f}")
-                
-                print(f"🔍 DEBUG: Normalized total probability: {normalized_total:.4f} ({normalized_total*100:.2f}%)")
-            else:
-                print(f"❌ DEBUG: Insufficient data for normalization (total_prob={total_implied_prob}, teams={len(implied_probs)})")
-        
-        for team in game_teams:
-            if team in non_draw_teams:
-                non_draw_teams.remove(team)
+    
+    total_implied_prob = 0
+    implied_probs = {}
+    
+    print(f"🔍 DEBUG: Converting American odds to implied probabilities for all teams:")
+    for team in teams:
+        if team in odds_dict:
+            american_odds = odds_dict[team]
+            prob = american_to_implied_prob(american_odds)
+            if prob is not None:
+                implied_probs[team] = prob
+                total_implied_prob += prob
+                print(f"   📊 {team}: {american_odds} → {prob:.4f} ({prob*100:.2f}%)")
+    
+    print(f"🔍 DEBUG: Total implied probability (with vig): {total_implied_prob:.4f} ({total_implied_prob*100:.2f}%)")
+    print(f"🔍 DEBUG: Vig amount: {(total_implied_prob - 1.0):.4f} ({(total_implied_prob - 1.0)*100:.2f}%)")
+    
+    print(f"🔍 DEBUG: Converting each team's odds individually:")
+    for team, american_odds in odds_dict.items():
+        prob = american_to_implied_prob(american_odds)
+        if prob is not None:
+            decimal_odds = 1 / prob
+            devigged_odds[team] = decimal_odds
+            print(f"   🎯 {team}: {american_odds} → prob {prob:.4f} → odds {decimal_odds:.4f}")
     
     print(f"🔍 DEBUG: Devigging complete. Processed {len(devigged_odds)} outcomes")
     return devigged_odds
