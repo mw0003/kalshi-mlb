@@ -61,13 +61,22 @@ mls_team_abbr_to_name = {
     "KC": "Sporting Kansas City", "STL": "St. Louis City SC", "TOR": "Toronto FC"
 }
 
-college_football_team_abbr_to_name = {
-    "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
-    "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
-    "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
-    "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
-    "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
-}
+def load_college_football_teams():
+    """Load college football team mappings from JSON file"""
+    json_path = os.path.join(os.path.dirname(__file__), 'college_football_teams.json')
+    try:
+        with open(json_path, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {
+            "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
+            "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
+            "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
+            "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
+            "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
+        }
+
+college_football_team_abbr_to_name = load_college_football_teams()
 
 sender_email = SENDER_EMAIL
 receiver_email = RECEIVER_EMAILS
