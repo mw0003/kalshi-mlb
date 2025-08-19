@@ -33,6 +33,18 @@ import os
 
 # --- Import Credentials ---
 from credentials import KALSHI_API_KEY, KALSHI_RSA_PRIVATE_KEY, ODDS_API_KEY, BANKROLL_CACHE_PATH, PLACED_ORDERS_PATH, ODDS_TIMESERIES_PATH
+NDJSON_ONLY = os.getenv("NDJSON_ONLY") == "1"
+
+def get_ndjson_path(sport_code, dt):
+    day = dt.strftime("%Y-%m-%d")
+    base_dir = os.path.join("odds_timeseries", str(sport_code).upper())
+    os.makedirs(base_dir, exist_ok=True)
+    return os.path.join(base_dir, f"{day}.ndjson")
+
+def write_ndjson_line(path, obj):
+    with open(path, "a") as f:
+        f.write(json.dumps(obj) + "\n")
+
 
 # 🔑 Load RSA Key
 private_key = serialization.load_pem_private_key(
@@ -583,6 +595,7 @@ def fetch_sport_opportunities(sport, api_key):
     else:
         composite_odds = {}
         opponent_map = {}
+        sportsbook_odds = {}
     
     kalshi_df["Sport"] = sport.upper()
     kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
@@ -600,6 +613,21 @@ def fetch_sport_opportunities(sport, api_key):
     kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
     kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
     
+    per_book_american = {}
+    per_book_prob = {}
+    for team in kalshi_df["Team Name"].unique():
+        if pd.isna(team):
+            continue
+        per_book_american[team] = {}
+        per_book_prob[team] = {}
+        for book, odds_by_team in sportsbook_odds.items():
+            if team in odds_by_team:
+                price = odds_by_team[team]
+                per_book_american[team][book] = price
+                per_book_prob[team][book] = american_to_implied_prob(price)
+    kalshi_df["Per-Book American Odds"] = kalshi_df["Team Name"].map(per_book_american)
+    kalshi_df["Per-Book Implied Prob"] = kalshi_df["Team Name"].map(per_book_prob)
+
     # Calculate fee based on Kalshi price
     kalshi_df["Fee"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int).apply(get_kalshi_fee_rate)
     
@@ -922,20 +950,29 @@ def store_odds_timeseries():
     
     for _, row in kalshi_df.iterrows():
         if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Kalshi %"]):
-            data.append({
+            per_book_american = row.get("Per-Book American Odds", {}) or {}
+            per_book_prob = row.get("Per-Book Implied Prob", {}) or {}
+
+            row_obj = {
                 "timestamp": timestamp,
                 "sport": row.get("Sport", "UNKNOWN"),
                 "team": row["Team Name"],
                 "kalshi_implied_odds": row["Kalshi %"],
                 "composite_devigged_odds": 1 / row["Composite Fair Odds"],
-                "expected_value": row["numeric_edge"]
-            })
+                "expected_value": row["numeric_edge"],
+                "per_book_american_odds": per_book_american,
+                "per_book_implied_prob": per_book_prob,
+                "composite_source_books": sorted(list(per_book_american.keys()))
+            }
+
+            data.append(row_obj)
+
+            ndjson_path = get_ndjson_path(row_obj["sport"], datetime.now(eastern).date())
+            write_ndjson_line(ndjson_path, row_obj)
     
-    cutoff_date = datetime.now(eastern) - timedelta(days=7)
-    data = [d for d in data if datetime.fromisoformat(d["timestamp"]) > cutoff_date]
-    
-    with open(filename, "w") as f:
-        json.dump(data, f)
+    if not NDJSON_ONLY:
+        with open(filename, "w") as f:
+            json.dump(data, f)
 
 store_odds_timeseries()
 
