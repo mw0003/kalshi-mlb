@@ -63,18 +63,27 @@ mls_team_abbr_to_name = {
 
 def load_college_football_teams():
     """Load college football team mappings from JSON file"""
-    json_path = os.path.join(os.path.dirname(__file__), 'college_football_teams.json')
-    try:
-        with open(json_path, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
-            "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
-            "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
-            "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
-            "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
-        }
+    possible_paths = [
+        'college_football_teams.json',  # Current working directory
+        os.path.join(os.getcwd(), 'college_football_teams.json'),  # Explicit current directory
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'college_football_teams.json') if '__file__' in globals() else None
+    ]
+    
+    for json_path in possible_paths:
+        if json_path and os.path.exists(json_path):
+            try:
+                with open(json_path, 'r') as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                continue
+    
+    return {
+        "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
+        "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
+        "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
+        "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
+        "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
+    }
 
 college_football_team_abbr_to_name = load_college_football_teams()
 
