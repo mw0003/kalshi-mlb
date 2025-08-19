@@ -600,6 +600,21 @@ def fetch_sport_opportunities(sport, api_key):
     kalshi_df["Kalshi %"] = kalshi_df["Kalshi YES Ask (¢)"] / 100
     kalshi_df["Decimal Odds (Kalshi)"] = 1 / kalshi_df["Kalshi %"]
     
+    per_book_american = {}
+    per_book_prob = {}
+    for team in kalshi_df["Team Name"].unique():
+        if pd.isna(team):
+            continue
+        per_book_american[team] = {}
+        per_book_prob[team] = {}
+        for book, odds_by_team in sportsbook_odds.items():
+            if team in odds_by_team:
+                price = odds_by_team[team]
+                per_book_american[team][book] = price
+                per_book_prob[team][book] = american_to_implied_prob(price)
+    kalshi_df["Per-Book American Odds"] = kalshi_df["Team Name"].map(per_book_american)
+    kalshi_df["Per-Book Implied Prob"] = kalshi_df["Team Name"].map(per_book_prob)
+
     # Calculate fee based on Kalshi price
     kalshi_df["Fee"] = kalshi_df["Kalshi YES Ask (¢)"].astype(int).apply(get_kalshi_fee_rate)
     
@@ -922,17 +937,19 @@ def store_odds_timeseries():
     
     for _, row in kalshi_df.iterrows():
         if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Kalshi %"]):
+            per_book_american = row.get("Per-Book American Odds", {}) or {}
+            per_book_prob = row.get("Per-Book Implied Prob", {}) or {}
             data.append({
                 "timestamp": timestamp,
                 "sport": row.get("Sport", "UNKNOWN"),
                 "team": row["Team Name"],
                 "kalshi_implied_odds": row["Kalshi %"],
                 "composite_devigged_odds": 1 / row["Composite Fair Odds"],
-                "expected_value": row["numeric_edge"]
+                "expected_value": row["numeric_edge"],
+                "per_book_american_odds": per_book_american,
+                "per_book_implied_prob": per_book_prob,
+                "composite_source_books": sorted(list(per_book_american.keys()))
             })
-    
-    cutoff_date = datetime.now(eastern) - timedelta(days=7)
-    data = [d for d in data if datetime.fromisoformat(d["timestamp"]) > cutoff_date]
     
     with open(filename, "w") as f:
         json.dump(data, f)
