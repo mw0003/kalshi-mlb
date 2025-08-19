@@ -583,6 +583,7 @@ def fetch_sport_opportunities(sport, api_key):
     else:
         composite_odds = {}
         opponent_map = {}
+        sportsbook_odds = {}
     
     kalshi_df["Sport"] = sport.upper()
     kalshi_df["Team Name"] = kalshi_df["Team"].map(config["team_map"]) if config["team_map"] else kalshi_df["Team"]
