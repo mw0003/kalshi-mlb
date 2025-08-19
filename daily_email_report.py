@@ -24,6 +24,51 @@ from credentials import (
     BANKROLL_CACHE_PATH, PLACED_ORDERS_PATH
 )
 
+nfl_team_abbr_to_name = {
+    "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
+    "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
+    "DAL": "Dallas Cowboys", "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars", "KC": "Kansas City Chiefs",
+    "LV": "Las Vegas Raiders", "LAC": "Los Angeles Chargers", "LAR": "Los Angeles Rams", "MIA": "Miami Dolphins",
+    "MIN": "Minnesota Vikings", "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
+    "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers", "SF": "San Francisco 49ers",
+    "SEA": "Seattle Seahawks", "TB": "Tampa Bay Buccaneers", "TEN": "Tennessee Titans", "WAS": "Washington Commanders"
+}
+
+wnba_team_abbr_to_name = {
+    "ATL": "Atlanta Dream", "CHI": "Chicago Sky", "CONN": "Connecticut Sun", "DAL": "Dallas Wings",
+    "IND": "Indiana Fever", "LV": "Las Vegas Aces", "MIN": "Minnesota Lynx", "NY": "New York Liberty",
+    "PHX": "Phoenix Mercury", "SEA": "Seattle Storm", "WSH": "Washington Mystics", "LA": "Los Angeles Sparks",
+    "GS": "Golden State Valkyries"
+}
+
+epl_team_abbr_to_name = {
+    "LFC": "Liverpool", "BOU": "Bournemouth", "AVL": "Aston Villa", "NEW": "Newcastle United",
+    "ARS": "Arsenal", "CHE": "Chelsea", "MCI": "Manchester City", "MUN": "Manchester United",
+    "TOT": "Tottenham Hotspur", "WHU": "West Ham United", "CRY": "Crystal Palace", "BRI": "Brighton & Hove Albion",
+    "FUL": "Fulham", "WOL": "Wolverhampton Wanderers", "EVE": "Everton", "BRE": "Brentford",
+    "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton"
+}
+
+mls_team_abbr_to_name = {
+    "HOU": "Houston Dynamo", "NSH": "Nashville SC", "NYC": "New York City FC", "SD": "San Diego FC",
+    "SJ": "San Jose Earthquakes", "VAN": "Vancouver Whitecaps FC", "TIE": "Draw", "ATL": "Atlanta United FC",
+    "AUS": "Austin FC", "CHA": "Charlotte FC", "CHI": "Chicago Fire", "CIN": "FC Cincinnati",
+    "COL": "Colorado Rapids", "CBS": "Columbus Crew SC", "DC": "D.C. United", "DAL": "FC Dallas",
+    "MIA": "Inter Miami CF", "LAG": "LA Galaxy", "LAFC": "Los Angeles FC", "MIN": "Minnesota United FC",
+    "MTL": "CF Montréal", "NE": "New England Revolution", "NYRB": "New York Red Bulls", "ORL": "Orlando City SC",
+    "PHI": "Philadelphia Union", "POR": "Portland Timbers", "RSL": "Real Salt Lake", "SEA": "Seattle Sounders FC",
+    "KC": "Sporting Kansas City", "STL": "St. Louis City SC", "TOR": "Toronto FC"
+}
+
+college_football_team_abbr_to_name = {
+    "STAN": "Stanford", "HAW": "Hawaii", "OHIO": "Ohio State", "RUTG": "Rutgers",
+    "WYO": "Wyoming", "AKR": "Akron", "DSU": "Delaware State", "DEL": "Delaware",
+    "ALST": "Alabama State", "UAB": "UAB", "MICH": "Michigan", "BAMA": "Alabama",
+    "UGA": "Georgia", "CLEM": "Clemson", "ND": "Notre Dame", "USC": "USC",
+    "UCLA": "UCLA", "ORE": "Oregon", "WASH": "Washington", "UTAH": "Utah"
+}
+
 sender_email = SENDER_EMAIL
 receiver_email = RECEIVER_EMAILS
 app_password = EMAIL_APP_PASSWORD
@@ -142,7 +187,7 @@ def summarize_sport(sport_prefix, sport_name, team_map):
 
     for o in orders:
         code = o["ticker"].split("-")[-1]
-        team = team_map.get(code, code)
+        team = team_map.get(code, team_map.get(f"MLB_{code}", code))
         side = o["side"]
         odds_val = (o["yes_price"] if side == "yes" else o["no_price"]) / 100
         odds = f"{int(round(odds_val * 100))}%"
@@ -249,73 +294,6 @@ pct_change = (pnl / yesterday_balance) * 100
 actual_total_capital = start_balance + 1100  # $850 + $1100 = $1950 (July 8th injection)
 cagr = (today_balance / actual_total_capital) ** (1 / days_since_start) - 1
 
-# Simulate distribution with 1.3% fee per trade and July 8th capital injection
-decimal_odds = 100 / 186 + 1
-break_even_win_prob = 1 / decimal_odds
-b = decimal_odds - 1
-
-capital_injection_day = 24
-capital_injection_amount = 1100
-july_23_cutoff_day = (date(2025, 7, 23) - start_date).days  # Day when edge changes from 1% to 5%
-
-np.random.seed(42)
-final_bankrolls = []
-total_capital_injected = []
-
-for _ in range(10000):
-    bank = start_balance
-    total_injected = 0
-    
-    for day in range(days_since_start):
-        if day == capital_injection_day:
-            bank += capital_injection_amount
-            total_injected += capital_injection_amount
-        
-        if day < july_23_cutoff_day:
-            edge_multiplier = 1.01  # 1% edge
-        else:
-            edge_multiplier = 1.04  # 4% edge
-            
-        true_win_prob = break_even_win_prob * edge_multiplier
-        p = true_win_prob
-        
-        kelly_fraction = (b * p - (1 - p)) / b
-        adjusted_kelly = 0.75 * kelly_fraction
-            
-        day_bank = bank
-        for _ in range(7):
-            wager = adjusted_kelly * day_bank
-            fee = 0.013 * wager
-            if np.random.rand() < p:
-                bank += wager * b - fee
-            else:
-                bank -= wager + fee
-                
-    final_bankrolls.append(bank)
-    total_capital_injected.append(total_injected)
-
-current_day = days_since_start - 1
-if current_day < july_23_cutoff_day:
-    current_edge_multiplier = 1.01
-else:
-    current_edge_multiplier = 1.05
-
-current_true_win_prob = break_even_win_prob * current_edge_multiplier
-expected_value_per_dollar = (current_true_win_prob * b) - ((1 - current_true_win_prob) * 1) - 0.013
-print(f"Expected Value per $1 bet (current edge {(current_edge_multiplier-1)*100:.0f}%): ${expected_value_per_dollar:.4f}")
-
-final_bankrolls = np.array(final_bankrolls)
-total_capital_injected = np.array(total_capital_injected)
-total_capital_base = start_balance + total_capital_injected
-
-sim_returns_raw = (final_bankrolls / total_capital_base)
-sim_cagrs = np.full_like(sim_returns_raw, np.nan)
-valid_mask = sim_returns_raw > 0
-sim_cagrs[valid_mask] = sim_returns_raw[valid_mask] ** (1 / days_since_start) - 1
-
-actual_cagr_normalized = cagr
-percentile = np.sum(sim_cagrs <= actual_cagr_normalized) / np.sum(~np.isnan(sim_cagrs)) * 100
-
 # Total return since start (normalized for capital injection)
 total_return_pct_raw = (today_balance / start_balance - 1) * 100
 total_return_pct_normalized = (today_balance / actual_total_capital - 1) * 100
@@ -340,28 +318,40 @@ sport_configs = {
         "HOU": "Houston Astros", "BAL": "Baltimore Orioles", "PHI": "Philadelphia Phillies",
         "SEA": "Seattle Mariners", "CHC": "Chicago Cubs", "BOS": "Boston Red Sox",
         "CLE": "Cleveland Guardians", "OAK": "Oakland Athletics", "WSH": "Washington Nationals",
-        "MIN": "Minnesota Twins", "ARI": "Arizona Diamondbacks", "COL": "Colorado Rockies",
+        "MIN": "Minnesota Twins", "AZ": "Arizona Diamondbacks", "ARI": "Arizona Diamondbacks", "COL": "Colorado Rockies",
         "KC": "Kansas City Royals", "CIN": "Cincinnati Reds", "PIT": "Pittsburgh Pirates",
         "TBR": "Tampa Bay Rays", "SFG": "San Francisco Giants", "NYM": "New York Mets"
-    })
+    }),
+    "NFL": ("KXNFLGAME", nfl_team_abbr_to_name),
+    "WNBA": ("KXWNBAGAME", wnba_team_abbr_to_name),
+    "EPL": ("KXEPLGAME", epl_team_abbr_to_name),
+    "MLS": ("KXMLSGAME", mls_team_abbr_to_name),
+    "College Football": ("KXNCAAFGAME", college_football_team_abbr_to_name)
 }
 
 sport_html_sections = []
+sport_icons = {
+    "MLB": "⚾",
+    "NFL": "🏈", 
+    "WNBA": "🏀",
+    "EPL": "⚽",
+    "MLS": "⚽",
+    "College Football": "🏈"
+}
+
 for sport_name, (series_ticker, team_map) in sport_configs.items():
     try:
         df, participation_rate = summarize_sport(series_ticker, sport_name, team_map)
-        html = df.to_html(index=False, border=0, justify="center")
-        sport_html_sections.append(f"""
-        <div class="section-title">⚾ {sport_name} Strategy</div>
-        <div class="metric">Participation Rate: <b>{participation_rate}</b></div>
-        {html}
-        """)
+        if not df.empty and len(df[df["team"] != "TOTAL"]) > 0:
+            html = df.to_html(index=False, border=0, justify="center")
+            icon = sport_icons.get(sport_name, "🏆")
+            sport_html_sections.append(f"""
+            <div class="section-title">{icon} {sport_name} Strategy</div>
+            <div class="metric">Participation Rate: <b>{participation_rate}</b></div>
+            {html}
+            """)
     except Exception as e:
         print(f"Error generating {sport_name} summary: {e}")
-
-mlb_df = summarize_mlb()
-mlb_html = mlb_df.to_html(index=False, border=0, justify="center")
-bet_on_games = len(mlb_df[mlb_df["team"] != "TOTAL"])
 
 # HTML Email
 open_summary = get_open_positions_from_yesterday()
@@ -398,8 +388,6 @@ email_body = f"""
     <div class="section-title">📈 Performance Since 6/14/25 ({days_since_start} Days)</div>
     <div class="metric">Total Return: <b>{total_return_pct_normalized:.2f}%</b></div>
     <div class="metric">Daily CAGR: <b>{cagr * 100:.2f}%</b></div>
-    <div class="metric">Percentile Rank vs Strategy (w/ 1.3% Fee/Trade): <b>{percentile:.1f}%</b></div>
-    <div class="metric"><i>Simulation assumes 7 trades/day with 1.3% fee on each trade.</i></div>
 
 
   </div>
