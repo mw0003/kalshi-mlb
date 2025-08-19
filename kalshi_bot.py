@@ -33,6 +33,18 @@ import os
 
 # --- Import Credentials ---
 from credentials import KALSHI_API_KEY, KALSHI_RSA_PRIVATE_KEY, ODDS_API_KEY, BANKROLL_CACHE_PATH, PLACED_ORDERS_PATH, ODDS_TIMESERIES_PATH
+NDJSON_ONLY = os.getenv("NDJSON_ONLY") == "1"
+
+def get_ndjson_path(sport_code, dt):
+    day = dt.strftime("%Y-%m-%d")
+    base_dir = os.path.join("odds_timeseries", str(sport_code).upper())
+    os.makedirs(base_dir, exist_ok=True)
+    return os.path.join(base_dir, f"{day}.ndjson")
+
+def write_ndjson_line(path, obj):
+    with open(path, "a") as f:
+        f.write(json.dumps(obj) + "\n")
+
 
 # 🔑 Load RSA Key
 private_key = serialization.load_pem_private_key(
@@ -940,7 +952,8 @@ def store_odds_timeseries():
         if pd.notna(row["Composite Fair Odds"]) and pd.notna(row["Kalshi %"]):
             per_book_american = row.get("Per-Book American Odds", {}) or {}
             per_book_prob = row.get("Per-Book Implied Prob", {}) or {}
-            data.append({
+
+            row_obj = {
                 "timestamp": timestamp,
                 "sport": row.get("Sport", "UNKNOWN"),
                 "team": row["Team Name"],
@@ -950,10 +963,16 @@ def store_odds_timeseries():
                 "per_book_american_odds": per_book_american,
                 "per_book_implied_prob": per_book_prob,
                 "composite_source_books": sorted(list(per_book_american.keys()))
-            })
+            }
+
+            data.append(row_obj)
+
+            ndjson_path = get_ndjson_path(row_obj["sport"], datetime.now(eastern).date())
+            write_ndjson_line(ndjson_path, row_obj)
     
-    with open(filename, "w") as f:
-        json.dump(data, f)
+    if not NDJSON_ONLY:
+        with open(filename, "w") as f:
+            json.dump(data, f)
 
 store_odds_timeseries()
 
