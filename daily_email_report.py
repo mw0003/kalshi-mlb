@@ -165,21 +165,22 @@ def summarize_sport(sport_prefix, sport_name, team_map):
         r.raise_for_status()
         return r.json().get("settlements", [])
 
-    def get_available_markets():
-        """Get count of available markets on Kalshi for this sport"""
+    def get_available_games():
+        """Get count of available games on Kalshi for this sport"""
         try:
             url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={sport_prefix}"
             headers = {"accept": "application/json"}
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             data = response.json()
-            return len([m for m in data.get("markets", []) if m.get("status") == "active"])
+            active_markets = [m for m in data.get("markets", []) if m.get("status") == "active"]
+            return len(active_markets) // 2 if len(active_markets) > 0 else 0
         except:
             return 0
 
     orders = [o for o in get_orders() if o.get("ticker", "").startswith(sport_prefix)]
     settlements = get_settlements()
-    available_markets = get_available_markets()
+    available_games = get_available_games()
 
     data = []
     total_wager_raw = 0.0
@@ -239,7 +240,7 @@ def summarize_sport(sport_prefix, sport_name, team_map):
     df = pd.DataFrame(data, columns=["team", "odds", "wager", "return", "ev_after_devig"])
     
     games_bet = len([d for d in data if d["team"] != "TOTAL"])
-    participation_rate = f"{games_bet}/{available_markets}" if available_markets > 0 else f"{games_bet}/0"
+    participation_rate = f"{games_bet}/{available_games}" if available_games > 0 else f"{games_bet}/0"
     
     return df, participation_rate
 
@@ -342,14 +343,22 @@ sport_icons = {
 for sport_name, (series_ticker, team_map) in sport_configs.items():
     try:
         df, participation_rate = summarize_sport(series_ticker, sport_name, team_map)
+        icon = sport_icons.get(sport_name, "🏆")
+        
         if not df.empty and len(df[df["team"] != "TOTAL"]) > 0:
             html = df.to_html(index=False, border=0, justify="center")
-            icon = sport_icons.get(sport_name, "🏆")
             sport_html_sections.append(f"""
             <div class="section-title">{icon} {sport_name} Strategy</div>
             <div class="metric">Participation Rate: <b>{participation_rate}</b></div>
             {html}
             """)
+        else:
+            games_available = int(participation_rate.split('/')[1]) if '/' in participation_rate else 0
+            if games_available > 0:
+                sport_html_sections.append(f"""
+                <div class="section-title">{icon} {sport_name} Strategy</div>
+                <div class="metric">Participation Rate: <b>{participation_rate}</b> (No bets placed)</div>
+                """)
     except Exception as e:
         print(f"Error generating {sport_name} summary: {e}")
 
