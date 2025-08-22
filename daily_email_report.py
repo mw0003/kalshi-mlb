@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from typing import Dict, List
 
 # --- Import Credentials ---
 from credentials import (
@@ -292,6 +293,114 @@ def summarize_sport(sport_prefix, sport_name, team_map):
     
     return df, participation_rate
 
+def fetch_game_results_for_date(target_date: str) -> List[Dict]:
+    """Fetch game results for a specific date using ESPN API"""
+    results = []
+    
+    espn_leagues = {
+        'MLB': 'mlb',
+        'NFL': 'nfl', 
+        'NBA': 'nba',
+        'WNBA': 'wnba',
+        'NHL': 'nhl',
+        'MLS': 'mls',
+        'EPL': 'eng.1',
+        'NCAAF': 'college-football',
+        'NCAAB': 'mens-college-basketball'
+    }
+    
+    for sport, league in espn_leagues.items():
+        try:
+            formatted_date = target_date.replace('-', '')
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{league}/scoreboard"
+            params = {'dates': formatted_date}
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            events = data.get('events', [])
+            for event in events:
+                if event.get('status', {}).get('type', {}).get('completed', False):
+                    competitions = event.get('competitions', [])
+                    if competitions:
+                        competition = competitions[0]
+                        competitors = competition.get('competitors', [])
+                        
+                        if len(competitors) == 2:
+                            home_team = None
+                            away_team = None
+                            home_score = 0
+                            away_score = 0
+                            
+                            for competitor in competitors:
+                                team_name = competitor.get('team', {}).get('displayName', '')
+                                score = int(competitor.get('score', 0))
+                                is_home = competitor.get('homeAway') == 'home'
+                                
+                                if is_home:
+                                    home_team = team_name
+                                    home_score = score
+                                else:
+                                    away_team = team_name
+                                    away_score = score
+                            
+                            if home_score > away_score:
+                                winner_team = home_team
+                            elif away_score > home_score:
+                                winner_team = away_team
+                            else:
+                                winner_team = "Tie"
+                            
+                            results.append({
+                                'sport': sport,
+                                'game_id': event.get('id', ''),
+                                'date': target_date,
+                                'home_team': home_team,
+                                'away_team': away_team,
+                                'home_score': home_score,
+                                'away_score': away_score,
+                                'winner_team': winner_team,
+                                'status': 'completed'
+                            })
+            
+        except Exception as e:
+            print(f"Error fetching {sport} results for {target_date}: {e}")
+    
+    return results
+
+def store_game_results(target_date: str):
+    """Fetch and store game results for the target date"""
+    results_path = "game_results.json"
+    
+    if os.path.exists(results_path):
+        with open(results_path, 'r') as f:
+            existing_data = json.load(f)
+    else:
+        existing_data = []
+    
+    existing_dates = {entry.get('date') for entry in existing_data}
+    if target_date in existing_dates:
+        print(f"✅ Game results for {target_date} already stored")
+        return
+    
+    print(f"🔍 Fetching game results for {target_date}...")
+    new_results = fetch_game_results_for_date(target_date)
+    
+    if new_results:
+        new_entry = {
+            'date': target_date,
+            'games': new_results
+        }
+        existing_data.append(new_entry)
+        
+        with open(results_path, 'w') as f:
+            json.dump(existing_data, f, indent=2)
+        
+        print(f"✅ Stored {len(new_results)} game results for {target_date}")
+    else:
+        print(f"⚠️ No completed games found for {target_date}")
+
 def summarize_mlb():
     """Backward compatibility wrapper for MLB"""
     TEAM_MAP = {
@@ -326,6 +435,9 @@ today = datetime.now(eastern).date()
 yesterday = today - timedelta(days=1)
 start_date = date(2025, 6, 14)
 days_since_start = (today - start_date).days
+
+store_game_results(str(yesterday))
+
 cache = read_bankroll_cache()
 start_balance = 850
 yesterday_balance = cache.get(str(yesterday))

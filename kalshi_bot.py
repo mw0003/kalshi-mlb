@@ -1028,6 +1028,14 @@ def store_odds_timeseries():
             per_book_american = row.get("Per-Book American Odds", {}) or {}
             per_book_prob = row.get("Per-Book Implied Prob", {}) or {}
 
+            game_id = None
+            ticker = row.get("Market Ticker", "")
+            if ticker:
+                # Example: KXMLBGAME-25JUL27NYMSF-NYM -> game_id could be "25JUL27NYMSF"
+                parts = ticker.split("-")
+                if len(parts) >= 2:
+                    game_id = parts[1]
+
             row_obj = {
                 "timestamp": timestamp,
                 "sport": row.get("Sport", "UNKNOWN"),
@@ -1037,7 +1045,9 @@ def store_odds_timeseries():
                 "expected_value": row["numeric_edge"],
                 "per_book_american_odds": per_book_american,
                 "per_book_implied_prob": per_book_prob,
-                "composite_source_books": sorted(list(per_book_american.keys()))
+                "composite_source_books": sorted(list(per_book_american.keys())),
+                "game_id": game_id,
+                "market_ticker": ticker
             }
 
             data.append(row_obj)
