@@ -24,6 +24,22 @@ from credentials import (
     BANKROLL_CACHE_PATH, PLACED_ORDERS_PATH
 )
 
+sport_name_mapping = {
+    "KXMLBGAME": "MLB",
+    "KXNFLGAME": "NFL", 
+    "KXNBAGAME": "NBA",
+    "KXCFBGAME": "NCAAF",
+    "KXCBBGAME": "NCAAB",
+    "KXNHLGAME": "NHL",
+    "KXWNBAGAME": "WNBA",
+    "KXMLSGAME": "MLS",
+    "KXEPLGAME": "EPL",
+    "KXUCLGAME": "UCL",
+    "KXEUROGAME": "EURO",
+    "KXCOPAGAME": "COPA",
+    "KXTENNISGAME": "TENNIS"
+}
+
 nfl_team_abbr_to_name = {
     "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
     "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
@@ -184,16 +200,30 @@ def summarize_sport(sport_prefix, sport_name, team_map):
         return r.json().get("settlements", [])
 
     def get_available_games():
-        """Get count of available games on Kalshi for this sport"""
+        """Get count of available games on Kalshi for this sport from yesterday's cached data"""
         try:
-            url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={sport_prefix}"
-            headers = {"accept": "application/json"}
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            active_markets = [m for m in data.get("markets", []) if m.get("status") == "active"]
-            return len(active_markets) // 2 if len(active_markets) > 0 else 0
-        except:
+            cache_path = os.path.join(os.path.dirname(__file__), "available_events_cache.json")
+            if not os.path.exists(cache_path):
+                print(f"❌ Available events cache not found at {cache_path}")
+                return 0
+            
+            with open(cache_path, 'r') as f:
+                cache = json.load(f)
+            
+            yesterday_str = str(yesterday)
+            
+            if yesterday_str not in cache:
+                print(f"❌ No cached data for {yesterday_str}")
+                return 0
+            
+            sport_name = sport_name_mapping.get(sport_prefix, sport_prefix)
+            if sport_name not in cache[yesterday_str]:
+                print(f"❌ No cached data for {sport_name} on {yesterday_str}")
+                return 0
+            
+            return cache[yesterday_str][sport_name]
+        except Exception as e:
+            print(f"❌ Error reading available events cache: {e}")
             return 0
 
     orders = [o for o in get_orders() if o.get("ticker", "").startswith(sport_prefix)]

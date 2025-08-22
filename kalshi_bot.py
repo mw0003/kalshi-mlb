@@ -35,6 +35,81 @@ import os
 from credentials import KALSHI_API_KEY, KALSHI_RSA_PRIVATE_KEY, ODDS_API_KEY, BANKROLL_CACHE_PATH, PLACED_ORDERS_PATH, ODDS_TIMESERIES_PATH
 NDJSON_ONLY = os.getenv("NDJSON_ONLY") == "1"
 
+def get_available_events_cache_path():
+    """Get path to available events cache file"""
+    return os.path.join(os.path.dirname(__file__), "available_events_cache.json")
+
+def store_daily_available_events():
+    """Store count of available events for each sport for today"""
+    try:
+        cache_path = get_available_events_cache_path()
+        
+        cache = {}
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r') as f:
+                cache = json.load(f)
+        
+        eastern = pytz.timezone("US/Eastern")
+        today = datetime.now(eastern).date()
+        today_str = str(today)
+        
+        if today_str in cache:
+            print(f"📅 Available events already cached for {today_str}")
+            return
+        
+        sport_configs = {
+            "MLB": {"series_ticker": "KXMLBGAME"},
+            "NFL": {"series_ticker": "KXNFLGAME"},
+            "NBA": {"series_ticker": "KXNBAGAME"},
+            "NCAAF": {"series_ticker": "KXCFBGAME"},
+            "NCAAB": {"series_ticker": "KXCBBGAME"},
+            "NHL": {"series_ticker": "KXNHLGAME"},
+            "WNBA": {"series_ticker": "KXWNBAGAME"},
+            "MLS": {"series_ticker": "KXMLSGAME"},
+            "EPL": {"series_ticker": "KXEPLGAME"},
+            "UCL": {"series_ticker": "KXUCLGAME"},
+            "EURO": {"series_ticker": "KXEUROGAME"},
+            "COPA": {"series_ticker": "KXCOPAGAME"},
+            "TENNIS": {"series_ticker": "KXTENNISGAME"}
+        }
+        
+        today_events = {}
+        kalshi_date_str = today.strftime("%y%b%d").upper()
+        
+        for sport, config in sport_configs.items():
+            series_ticker = config["series_ticker"]
+            try:
+                url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
+                headers = {"accept": "application/json"}
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                
+                active_markets = []
+                for market in data.get("markets", []):
+                    if market.get("status") == "active":
+                        ticker = market.get("ticker", "")
+                        if kalshi_date_str in ticker:
+                            active_markets.append(market)
+                
+                event_count = len(active_markets) // 2 if len(active_markets) > 0 else 0
+                today_events[sport] = event_count
+                print(f"📅 {sport}: {event_count} events available for {kalshi_date_str}")
+                
+            except Exception as e:
+                print(f"❌ Error fetching {sport} events: {e}")
+                today_events[sport] = 0
+        
+        cache[today_str] = today_events
+        
+        with open(cache_path, 'w') as f:
+            json.dump(cache, f, indent=2)
+        
+        print(f"✅ Stored available events for {today_str}")
+        
+    except Exception as e:
+        print(f"❌ Error storing daily available events: {e}")
+
 def get_ndjson_path(sport_code, dt):
     day = dt.strftime("%Y-%m-%d")
     base_dir = os.path.join("odds_timeseries", str(sport_code).upper())
@@ -975,6 +1050,8 @@ def store_odds_timeseries():
             json.dump(data, f)
 
 store_odds_timeseries()
+
+store_daily_available_events()
 
 if not kalshi_df.empty and "numeric_edge" in kalshi_df.columns:
     kalshi_df = kalshi_df.drop(columns=["numeric_edge"])
