@@ -29,7 +29,7 @@ sport_name_mapping = {
     "KXMLBGAME": "MLB",
     "KXNFLGAME": "NFL", 
     "KXNBAGAME": "NBA",
-    "KXCFBGAME": "NCAAF",
+    "KXNCAAFGAME": "NCAAF",
     "KXCBBGAME": "NCAAB",
     "KXNHLGAME": "NHL",
     "KXWNBAGAME": "WNBA",

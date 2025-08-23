@@ -61,7 +61,7 @@ def store_daily_available_events():
             "MLB": {"series_ticker": "KXMLBGAME"},
             "NFL": {"series_ticker": "KXNFLGAME"},
             "NBA": {"series_ticker": "KXNBAGAME"},
-            "NCAAF": {"series_ticker": "KXCFBGAME"},
+            "NCAAF": {"series_ticker": "KXNCAAFGAME"},
             "NCAAB": {"series_ticker": "KXCBBGAME"},
             "NHL": {"series_ticker": "KXNHLGAME"},
             "WNBA": {"series_ticker": "KXWNBAGAME"},
@@ -291,7 +291,7 @@ def get_eligible_teams(sport=None):
         "wnba": "basketball/wnba",
         "mls": "soccer/usa.1",
         "epl": "soccer/eng.1",
-        "college_football": "americanfootball_ncaaf"
+        "college_football": "football/college-football"
     }
     
     if sport and sport in sport_to_league_map:
@@ -299,7 +299,7 @@ def get_eligible_teams(sport=None):
         scoreboard = get_espn_scoreboard_json(league)
         return set(parse_games(scoreboard))
     else:
-        leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa.1","soccer/eng.1"]
+        leagues = ["baseball/mlb", "football/nfl", "basketball/wnba", "soccer/usa.1","soccer/eng.1", "football/college-football"]
         all_teams = set()
         for league in leagues:
             scoreboard = get_espn_scoreboard_json(league)
@@ -455,8 +455,8 @@ nfl_team_abbr_to_name = {
     "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
     "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
     "DAL": "Dallas Cowboys", "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
-    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars", "KC": "Kansas City Chiefs",
-    "LV": "Las Vegas Raiders", "LAC": "Los Angeles Chargers", "LAR": "Los Angeles Rams", "MIA": "Miami Dolphins",
+    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAC": "Jacksonville Jaguars", "KC": "Kansas City Chiefs",
+    "LV": "Las Vegas Raiders", "LAC": "Los Angeles Chargers", "LA": "Los Angeles Rams", "MIA": "Miami Dolphins",
     "MIN": "Minnesota Vikings", "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
     "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers", "SF": "San Francisco 49ers",
     "SEA": "Seattle Seahawks", "TB": "Tampa Bay Buccaneers", "TEN": "Tennessee Titans", "WAS": "Washington Commanders"
@@ -474,7 +474,7 @@ epl_team_abbr_to_name = {
     "ARS": "Arsenal", "CHE": "Chelsea", "MCI": "Manchester City", "MUN": "Manchester United",
     "TOT": "Tottenham Hotspur", "WHU": "West Ham United", "CRY": "Crystal Palace", "BRI": "Brighton & Hove Albion",
     "FUL": "Fulham", "WOL": "Wolverhampton Wanderers", "EVE": "Everton", "BRE": "Brentford",
-    "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton"
+    "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton", "BUR": "Burnley", "LEE": "Leeds United", "SUN": "Sunderland"
 }
 
 def load_college_football_teams():
