@@ -500,10 +500,33 @@ sport_icons = {
     "College Football": "🏈"
 }
 
+summary_data = []
+total_wager_all_sports = 0.0
+total_return_all_sports = 0.0
+
 for sport_name, (series_ticker, team_map) in sport_configs.items():
     try:
         df, participation_rate = summarize_sport(series_ticker, sport_name, team_map)
         icon = sport_icons.get(sport_name, "🏆")
+        
+        sport_wager = 0.0
+        sport_return = 0.0
+        if not df.empty:
+            total_row = df[df["team"] == "TOTAL"]
+            if not total_row.empty:
+                wager_str = total_row["wager"].iloc[0].replace("$", "")
+                return_str = total_row["return"].iloc[0].replace("$", "")
+                sport_wager = float(wager_str)
+                sport_return = float(return_str)
+        
+        if sport_wager > 0 or sport_return > 0:
+            summary_data.append({
+                "sport": f"{icon} {sport_name}",
+                "wager": f"${sport_wager:.2f}",
+                "return": f"${sport_return:.2f}"
+            })
+            total_wager_all_sports += sport_wager
+            total_return_all_sports += sport_return
         
         if not df.empty and len(df[df["team"] != "TOTAL"]) > 0:
             html = df.to_html(index=False, border=0, justify="center")
@@ -521,6 +544,13 @@ for sport_name, (series_ticker, team_map) in sport_configs.items():
                 """)
     except Exception as e:
         print(f"Error generating {sport_name} summary: {e}")
+
+if summary_data:
+    summary_data.append({
+        "sport": "<b>TOTAL</b>",
+        "wager": f"<b>${total_wager_all_sports:.2f}</b>",
+        "return": f"<b>${total_return_all_sports:.2f}</b>"
+    })
 
 # HTML Email
 open_summary = get_open_positions_from_yesterday()
@@ -543,6 +573,9 @@ email_body = f"""
 <body>
   <div class="card">
     <h2>📊 Kalshi Daily Report — {today}</h2>
+
+    <div class="section-title">📈 Sports Summary</div>
+    {pd.DataFrame(summary_data).to_html(index=False, border=0, justify="center", escape=False) if summary_data else '<div class="metric">No bets placed across any sports</div>'}
 
     {''.join(sport_html_sections)}
 

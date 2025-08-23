@@ -205,9 +205,12 @@ def build_opponent_map():
 
 def fetch_composite_odds(api_key, sport="baseball_mlb"):
     url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
+    
+    market_type = "h2h"
+    
     params = {
         "regions": "us",
-        "markets": "h2h",
+        "markets": market_type,
         "oddsFormat": "american",
         "bookmakers": "fanduel,draftkings,betmgm,caesars,espnbet",
         "apiKey": api_key
@@ -237,10 +240,12 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
         for bookmaker in game.get("bookmakers", []):
             book_key = bookmaker["key"]
             if book_key in sportsbook_odds:
-                market = next((m for m in bookmaker.get("markets", []) if m["key"] == "h2h"), None)
+                market = next((m for m in bookmaker.get("markets", []) if m["key"] == market_type), None)
                 if market:
                     for outcome in market.get("outcomes", []):
                         team = outcome["name"].strip().replace("Oakland Athletics", "Athletics")
+                        if team.lower() == "draw":
+                            team = "Draw"
                         sportsbook_odds[book_key][team] = outcome["price"]
     
     print(f"📊 {sport}: {today_games} games today, {len(opponent_map)//2} matchups processed")
@@ -842,7 +847,7 @@ def devig_soccer_odds(sportsbook_odds):
     return composite_odds
 
 def devig_sportsbook_odds_soccer(odds_dict):
-    """Devigger for a single sportsbook's 3-way soccer odds"""
+    """Devigger for a single sportsbook's 3-way soccer odds with proper normalization"""
     
     print(f"🔍 DEBUG: Starting 3-way soccer devigging for {len(odds_dict)} teams")
     
@@ -853,13 +858,10 @@ def devig_sportsbook_odds_soccer(odds_dict):
     print(f"🔍 DEBUG: Found {len(draw_teams)} draw outcomes and {len(non_draw_teams)} team outcomes")
     print(f"🔍 DEBUG: All teams to process: {teams}")
     
-    devigged_odds = {}
-    
-    
-    total_implied_prob = 0
     implied_probs = {}
+    total_implied_prob = 0
     
-    print(f"🔍 DEBUG: Converting American odds to implied probabilities for all teams:")
+    print(f"🔍 DEBUG: Converting American odds to implied probabilities:")
     for team in teams:
         if team in odds_dict:
             american_odds = odds_dict[team]
@@ -872,13 +874,14 @@ def devig_sportsbook_odds_soccer(odds_dict):
     print(f"🔍 DEBUG: Total implied probability (with vig): {total_implied_prob:.4f} ({total_implied_prob*100:.2f}%)")
     print(f"🔍 DEBUG: Vig amount: {(total_implied_prob - 1.0):.4f} ({(total_implied_prob - 1.0)*100:.2f}%)")
     
-    print(f"🔍 DEBUG: Converting each team's odds individually:")
-    for team, american_odds in odds_dict.items():
-        prob = american_to_implied_prob(american_odds)
-        if prob is not None:
-            decimal_odds = 1 / prob
+    devigged_odds = {}
+    if total_implied_prob > 0:
+        print(f"🔍 DEBUG: Normalizing probabilities and converting back to odds:")
+        for team in implied_probs:
+            normalized_prob = implied_probs[team] / total_implied_prob
+            decimal_odds = 1 / normalized_prob
             devigged_odds[team] = decimal_odds
-            print(f"   🎯 {team}: {american_odds} → prob {prob:.4f} → odds {decimal_odds:.4f}")
+            print(f"   🎯 {team}: prob {implied_probs[team]:.4f} → normalized {normalized_prob:.4f} → odds {decimal_odds:.4f}")
     
     print(f"🔍 DEBUG: Devigging complete. Processed {len(devigged_odds)} outcomes")
     return devigged_odds

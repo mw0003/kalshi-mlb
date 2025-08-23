@@ -12,8 +12,7 @@ from kalshi_bot import (
     devig_sportsbook_odds, 
     devig_composite_odds,
     get_dynamic_kelly_multiplier,
-    api_calls_made,
-    max_api_calls
+    count_api_call
 )
 
 def test_american_to_implied_prob():
@@ -82,10 +81,33 @@ def test_api_tracking():
     """Test API call tracking"""
     print("Testing API call tracking...")
     
-    print(f"API calls made: {api_calls_made}/{max_api_calls}")
-    assert api_calls_made <= max_api_calls, "API call limit exceeded"
+    result = count_api_call()
+    assert result == True, "API call tracking should return True"
     
     print("✅ API tracking tests passed")
+
+def test_soccer_devigging():
+    """Test 3-way soccer devigging"""
+    print("Testing soccer 3-way devigging...")
+    
+    from kalshi_bot import devig_sportsbook_odds_soccer
+    
+    odds_dict = {
+        "Team A": 150,
+        "Team B": 200,
+        "Draw": 250
+    }
+    
+    devigged = devig_sportsbook_odds_soccer(odds_dict)
+    
+    assert "Team A" in devigged, "Team A missing from devigged odds"
+    assert "Team B" in devigged, "Team B missing from devigged odds" 
+    assert "Draw" in devigged, "Draw missing from devigged odds"
+    
+    total_prob = sum(1/odds for odds in devigged.values())
+    assert abs(total_prob - 1.0) < 0.01, f"Probabilities don't sum to 1.0: {total_prob}"
+    
+    print("✅ Soccer 3-way devigging tests passed")
 
 def main():
     """Run all tests"""
@@ -97,6 +119,7 @@ def main():
         test_composite_odds()
         test_dynamic_kelly()
         test_api_tracking()
+        test_soccer_devigging()
         
         print("\n🎉 All tests passed!")
         return True
