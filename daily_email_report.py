@@ -41,6 +41,17 @@ sport_name_mapping = {
     "KXTENNISGAME": "TENNIS"
 }
 
+mlb_team_abbr_to_name = {
+    "ATL": "Atlanta Braves", "AZ": "Arizona Diamondbacks", "DET": "Detroit Tigers", "BAL": "Baltimore Orioles",
+    "BOS": "Boston Red Sox", "CLE": "Cleveland Guardians", "KC": "Kansas City Royals", "HOU": "Houston Astros",
+    "NYM": "New York Mets", "WSH": "Washington Nationals", "PHI": "Philadelphia Phillies", "CHC": "Chicago Cubs",
+    "SF": "San Francisco Giants", "TEX": "Texas Rangers", "SEA": "Seattle Mariners", "MIA": "Miami Marlins",
+    "CWS": "Chicago White Sox", "MIN": "Minnesota Twins", "LAA": "Los Angeles Angels", "NYY": "New York Yankees",
+    "TOR": "Toronto Blue Jays", "PIT": "Pittsburgh Pirates", "LAD": "Los Angeles Dodgers",
+    "MIL": "Milwaukee Brewers", "STL": "St. Louis Cardinals", "COL": "Colorado Rockies",
+    "CIN": "Cincinnati Reds", "SD": "San Diego Padres", "TB": "Tampa Bay Rays", "OAK": "Oakland Athletics", "ATH": "Athletics"
+}
+
 nfl_team_abbr_to_name = {
     "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
     "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
@@ -64,18 +75,41 @@ epl_team_abbr_to_name = {
     "ARS": "Arsenal", "CHE": "Chelsea", "MCI": "Manchester City", "MUN": "Manchester United",
     "TOT": "Tottenham Hotspur", "WHU": "West Ham United", "CRY": "Crystal Palace", "BRI": "Brighton & Hove Albion",
     "FUL": "Fulham", "WOL": "Wolverhampton Wanderers", "EVE": "Everton", "BRE": "Brentford",
-    "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton"
+    "NFO": "Nottingham Forest", "LEI": "Leicester City", "IPS": "Ipswich Town", "SOU": "Southampton", "BUR": "Burnley", "LEE": "Leeds United", "SUN": "Sunderland"
 }
 
 mls_team_abbr_to_name = {
-    "HOU": "Houston Dynamo", "NSH": "Nashville SC", "NYC": "New York City FC", "SD": "San Diego FC",
-    "SJ": "San Jose Earthquakes", "VAN": "Vancouver Whitecaps FC", "TIE": "Draw", "ATL": "Atlanta United FC",
-    "AUS": "Austin FC", "CHA": "Charlotte FC", "CHI": "Chicago Fire", "CIN": "FC Cincinnati",
-    "COL": "Colorado Rapids", "CBS": "Columbus Crew SC", "DC": "D.C. United", "DAL": "FC Dallas",
-    "MIA": "Inter Miami CF", "LAG": "LA Galaxy", "LAFC": "Los Angeles FC", "MIN": "Minnesota United FC",
-    "MTL": "CF Montréal", "NE": "New England Revolution", "NYRB": "New York Red Bulls", "ORL": "Orlando City SC",
-    "PHI": "Philadelphia Union", "POR": "Portland Timbers", "RSL": "Real Salt Lake", "SEA": "Seattle Sounders FC",
-    "KC": "Sporting Kansas City", "STL": "St. Louis City SC", "TOR": "Toronto FC"
+    "HOU": "Houston Dynamo",
+    "NSH": "Nashville SC", 
+    "NYC": "New York City FC",
+    "SD": "San Diego FC",
+    "SJ": "San Jose Earthquakes",
+    "VAN": "Vancouver Whitecaps FC",
+    "TIE": "Draw",
+    "ATL": "Atlanta United FC",
+    "ATX": "Austin FC",
+    "CHA": "Charlotte FC",
+    "CHI": "Chicago Fire",
+    "CIN": "FC Cincinnati",
+    "COL": "Colorado Rapids",
+    "CLB": "Columbus Crew SC",
+    "DCU": "D.C. United",
+    "DAL": "FC Dallas",
+    "MIA": "Inter Miami CF",
+    "LAG": "LA Galaxy",
+    "LAF": "Los Angeles FC",
+    "MIN": "Minnesota United FC",
+    "MTL": "CF Montreal",
+    "NYR": "New York Red Bulls",
+    "NE": "New England Revolution",
+    "NYF": "New York City FC",
+    "ORL": "Orlando City SC",
+    "PHI": "Philadelphia Union",
+    "POR": "Portland Timbers",
+    "RSL": "Real Salt Lake",
+    "SEA": "Seattle Sounders FC",
+    "KC": "Sporting Kansas City",
+    "STL": "St. Louis City SC"
 }
 
 def load_college_football_teams():
@@ -461,28 +495,7 @@ total_return_pct_normalized = (today_balance / actual_total_capital - 1) * 100
 
 sport_summaries = {}
 sport_configs = {
-    "MLB": ("KXMLBGAME", {
-        "MLB_DET": "Detroit Tigers", "MLB_MIA": "Miami Marlins", "MLB_CWS": "Chicago White Sox",
-        "MLB_LAA": "Los Angeles Angels", "MLB_LAD": "Los Angeles Dodgers", "MLB_SD": "San Diego Padres",
-        "MLB_NYY": "New York Yankees", "MLB_TOR": "Toronto Blue Jays", "MLB_STL": "St. Louis Cardinals",
-        "MLB_MIL": "Milwaukee Brewers", "MLB_ATL": "Atlanta Braves", "MLB_TEX": "Texas Rangers",
-        "MLB_HOU": "Houston Astros", "MLB_BAL": "Baltimore Orioles", "MLB_PHI": "Philadelphia Phillies",
-        "MLB_SEA": "Seattle Mariners", "MLB_CHC": "Chicago Cubs", "MLB_BOS": "Boston Red Sox",
-        "MLB_CLE": "Cleveland Guardians", "MLB_OAK": "Oakland Athletics", "MLB_WSH": "Washington Nationals",
-        "MLB_MIN": "Minnesota Twins", "MLB_ARI": "Arizona Diamondbacks", "MLB_COL": "Colorado Rockies",
-        "MLB_KC": "Kansas City Royals", "MLB_CIN": "Cincinnati Reds", "MLB_PIT": "Pittsburgh Pirates",
-        "MLB_TBR": "Tampa Bay Rays", "MLB_SFG": "San Francisco Giants", "MLB_NYM": "New York Mets",
-        "DET": "Detroit Tigers", "MIA": "Miami Marlins", "CWS": "Chicago White Sox",
-        "LAA": "Los Angeles Angels", "LAD": "Los Angeles Dodgers", "SD": "San Diego Padres",
-        "NYY": "New York Yankees", "TOR": "Toronto Blue Jays", "STL": "St. Louis Cardinals",
-        "MIL": "Milwaukee Brewers", "ATL": "Atlanta Braves", "TEX": "Texas Rangers",
-        "HOU": "Houston Astros", "BAL": "Baltimore Orioles", "PHI": "Philadelphia Phillies",
-        "SEA": "Seattle Mariners", "CHC": "Chicago Cubs", "BOS": "Boston Red Sox",
-        "CLE": "Cleveland Guardians", "OAK": "Oakland Athletics", "WSH": "Washington Nationals",
-        "MIN": "Minnesota Twins", "AZ": "Arizona Diamondbacks", "ARI": "Arizona Diamondbacks", "COL": "Colorado Rockies",
-        "KC": "Kansas City Royals", "CIN": "Cincinnati Reds", "PIT": "Pittsburgh Pirates",
-        "TBR": "Tampa Bay Rays", "SFG": "San Francisco Giants", "NYM": "New York Mets"
-    }),
+    "MLB": ("KXMLBGAME", mlb_team_abbr_to_name),
     "NFL": ("KXNFLGAME", nfl_team_abbr_to_name),
     "WNBA": ("KXWNBAGAME", wnba_team_abbr_to_name),
     "EPL": ("KXEPLGAME", epl_team_abbr_to_name),
