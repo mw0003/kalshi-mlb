@@ -38,7 +38,7 @@ mhlAMQeQS9CmRiGid7cb9rXfAOHJA6az7qFWzVbPyDI9GAsXlZQ=
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "141e7d4fb0c345a19225eb2f2b114273")
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "walkwalkm1@gmail.com")
-RECEIVER_EMAILS = os.getenv("RECEIVER_EMAILS", "walkwalkm1@gmail.com,robindu1999@gmail.com,mattkass329@gmail.com").split(",")
+RECEIVER_EMAILS = os.getenv("RECEIVER_EMAILS", "walkwalkm1@gmail.com,robindu1999@gmail.com,mattkass329@gmail.com,bdamp36@gmail.com").split(",")
 EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD", "upcfsvrhavhyxtiy")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
