@@ -30,7 +30,8 @@ from diagnostics_utils import (
 )
 
 try:
-    from credentials import SENDER_EMAIL, RECEIVER_EMAILS, EMAIL_APP_PASSWORD
+    from credentials import SENDER_EMAIL, EMAIL_APP_PASSWORD
+    RECEIVER_EMAILS = ["walkwalkm1@gmail.com"]
     EMAIL_ENABLED = True
 except ImportError:
     print("Email credentials not found - will save charts locally only")
