@@ -762,27 +762,52 @@ def get_kalshi_fee_rate(price_cents):
 
 def fetch_kalshi_sport_odds(series_ticker):
     """Generic function to fetch Kalshi odds for any sport series - filters for today's games only"""
-    url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
-    headers = {"accept": "application/json"}
+    path = f"/trade-api/v2/markets?series_ticker={series_ticker}"
+    url = f"https://trading-api.kalshi.com{path}"
+    headers = sign_request("GET", path, KALSHI_API_KEY, private_key)
+    
+    print(f"🔍 DEBUG: {series_ticker} - Making authenticated API request to: {url}")
+    print(f"🔍 DEBUG: {series_ticker} - Request headers: {list(headers.keys())}")
+    
     try:
         response = requests.get(url, headers=headers)
+        print(f"🔍 DEBUG: {series_ticker} - API response status: {response.status_code}")
+        
         response.raise_for_status()
         data = response.json()
-        rows = []
         
+        total_markets = len(data.get("markets", []))
+        print(f"🔍 DEBUG: {series_ticker} - Raw API returned {total_markets} total markets")
+        
+        if total_markets > 0:
+            print(f"🔍 DEBUG: {series_ticker} - Sample market tickers:")
+            for i, market in enumerate(data.get("markets", [])[:5]):
+                ticker = market.get("ticker", "")
+                status = market.get("status", "")
+                print(f"  {i+1}. {ticker} ({status})")
+        
+        rows = []
         today_str = today.strftime("%y%b%d").upper()
+        print(f"🔍 DEBUG: {series_ticker} - Filtering for today's date: {today_str}")
+        
+        active_markets = 0
+        date_filtered_markets = 0
         
         for market in data.get("markets", []):
-            if market.get("status") != "active":
-                continue
-            
             ticker = market.get("ticker", "")
+            status = market.get("status", "")
+            
+            if status != "active":
+                continue
+            active_markets += 1
+            
             parts = ticker.split('-')
             if len(parts) < 3:
                 continue
             
             if today_str not in ticker:
                 continue
+            date_filtered_markets += 1
                 
             rows.append({
                 "Market Ticker": ticker,
@@ -791,10 +816,14 @@ def fetch_kalshi_sport_odds(series_ticker):
                 "Kalshi YES Ask (¢)": market.get("yes_ask")
             })
         
+        print(f"🔍 DEBUG: {series_ticker} - Active markets: {active_markets}")
+        print(f"🔍 DEBUG: {series_ticker} - Markets matching date '{today_str}': {date_filtered_markets}")
         print(f"📅 {series_ticker}: Found {len(rows)} markets for today ({today_str})")
+        
         return pd.DataFrame(rows)
     except Exception as e:
         print(f"❌ Error fetching {series_ticker} markets: {e}")
+        print(f"🔍 DEBUG: {series_ticker} - Exception details: {type(e).__name__}: {str(e)}")
         return pd.DataFrame()
 
 def devig_soccer_odds(sportsbook_odds):
