@@ -82,6 +82,8 @@ def store_daily_available_events():
                 url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
                 headers = {"accept": "application/json"}
                 response = requests.get(url, headers=headers)
+                print(f"🔍 DEBUG: {sport} - Response status: {response.status_code}")
+                print(f"🔍 DEBUG: {sport} - Response headers: {response.headers}")
                 response.raise_for_status()
                 data = response.json()
                 
@@ -205,12 +207,9 @@ def build_opponent_map():
 
 def fetch_composite_odds(api_key, sport="baseball_mlb"):
     url = f'https://api.the-odds-api.com/v4/sports/{sport}/odds'
-    
-    market_type = "h2h"
-    
     params = {
         "regions": "us",
-        "markets": market_type,
+        "markets": "h2h",
         "oddsFormat": "american",
         "bookmakers": "fanduel,draftkings,betmgm,caesars,espnbet",
         "apiKey": api_key
@@ -240,12 +239,10 @@ def fetch_composite_odds(api_key, sport="baseball_mlb"):
         for bookmaker in game.get("bookmakers", []):
             book_key = bookmaker["key"]
             if book_key in sportsbook_odds:
-                market = next((m for m in bookmaker.get("markets", []) if m["key"] == market_type), None)
+                market = next((m for m in bookmaker.get("markets", []) if m["key"] == "h2h"), None)
                 if market:
                     for outcome in market.get("outcomes", []):
                         team = outcome["name"].strip().replace("Oakland Athletics", "Athletics")
-                        if team.lower() == "draw":
-                            team = "Draw"
                         sportsbook_odds[book_key][team] = outcome["price"]
     
     print(f"📊 {sport}: {today_games} games today, {len(opponent_map)//2} matchups processed")
@@ -767,7 +764,10 @@ def get_kalshi_fee_rate(price_cents):
 
 def fetch_kalshi_sport_odds(series_ticker):
     """Generic function to fetch Kalshi odds for any sport series - filters for today's games only"""
-    url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
+    if series_ticker == "KXNCAAFGAME":
+        url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}&status=open&limit=1000"
+    else:
+        url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series_ticker}"
     headers = {"accept": "application/json"}
     try:
         response = requests.get(url, headers=headers)
