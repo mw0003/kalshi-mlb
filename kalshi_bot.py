@@ -61,7 +61,7 @@ def store_daily_available_events():
             "MLB": {"series_ticker": "KXMLBGAME"},
             "NFL": {"series_ticker": "KXNFLGAME"},
             "NBA": {"series_ticker": "KXNBAGAME"},
-            "NCAAF": {"series_ticker": "KXCFBGAME"},
+            "NCAAF": {"series_ticker": "KXNCAAFGAME"},
             "NCAAB": {"series_ticker": "KXCBBGAME"},
             "NHL": {"series_ticker": "KXNHLGAME"},
             "WNBA": {"series_ticker": "KXWNBAGAME"},
