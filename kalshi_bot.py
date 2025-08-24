@@ -666,7 +666,7 @@ def fetch_sport_opportunities(sport, api_key):
         sportsbook_odds, opponent_map = fetch_composite_odds(api_key, config["api_sport"])
         
         if config["market_type"] == "3way":
-            composite_odds = devig_soccer_odds(sportsbook_odds)
+            composite_odds = devig_soccer_odds(sportsbook_odds, opponent_map)
         else:
             composite_odds = devig_composite_odds(sportsbook_odds, opponent_map)
     else:
@@ -802,16 +802,16 @@ def fetch_kalshi_sport_odds(series_ticker):
         print(f"❌ Error fetching {series_ticker} markets: {e}")
         return pd.DataFrame()
 
-def devig_soccer_odds(sportsbook_odds):
+def devig_soccer_odds(sportsbook_odds, opponent_map):
     """Special devigging for soccer 3-way markets (Win/Loss/Draw)"""
-    print(f"🧮 Starting soccer odds devigging with simple averaging...")
+    print(f"🧮 Starting soccer odds devigging with game-by-game processing...")
     print(f"📊 Processing sportsbooks: {list(sportsbook_odds.keys())}")
     
     devigged_books = {}
     for book, odds_dict in sportsbook_odds.items():
         if odds_dict:
             print(f"📚 Processing {book} with {len(odds_dict)} teams")
-            devigged_books[book] = devig_sportsbook_odds_soccer(odds_dict)
+            devigged_books[book] = devig_sportsbook_odds_soccer(odds_dict, opponent_map)
             print(f"✅ {book} devigged: {len(devigged_books[book])} teams")
         else:
             print(f"⚠️ No odds data for {book}")
@@ -846,44 +846,78 @@ def devig_soccer_odds(sportsbook_odds):
     print(f"📈 Soccer composite devigging summary: {successful_composites}/{len(all_teams)} teams processed successfully")
     return composite_odds
 
-def devig_sportsbook_odds_soccer(odds_dict):
-    """Devigger for a single sportsbook's 3-way soccer odds with proper normalization"""
+def devig_sportsbook_odds_soccer(odds_dict, opponent_map):
+    """Devigger for a single sportsbook's 3-way soccer odds with proper game-by-game normalization"""
     
     print(f"🔍 DEBUG: Starting 3-way soccer devigging for {len(odds_dict)} teams")
     
-    teams = list(odds_dict.keys())
-    draw_teams = [t for t in teams if t.lower() == "draw"]
-    non_draw_teams = [t for t in teams if t.lower() != "draw"]
+    games = {}
+    processed_teams = set()
+    draw_outcomes = [team for team in odds_dict.keys() if team.lower() == "draw"]
     
-    print(f"🔍 DEBUG: Found {len(draw_teams)} draw outcomes and {len(non_draw_teams)} team outcomes")
-    print(f"🔍 DEBUG: All teams to process: {teams}")
+    print(f"🔍 DEBUG: Found {len(draw_outcomes)} draw outcomes")
     
-    implied_probs = {}
-    total_implied_prob = 0
+    for team in odds_dict.keys():
+        if team.lower() == "draw" or team in processed_teams:
+            continue
+            
+        opponent = opponent_map.get(team)
+        if opponent and opponent in odds_dict:
+            game_teams = [team, opponent]
+            
+            if draw_outcomes:
+                game_teams.append(draw_outcomes[0])
+                draw_outcomes = draw_outcomes[1:]  # Remove used draw
+            
+            game_id = f"{team}_vs_{opponent}"
+            games[game_id] = game_teams
+            processed_teams.add(team)
+            processed_teams.add(opponent)
+            
+            print(f"🔍 DEBUG: Created game {game_id} with teams: {game_teams}")
     
-    print(f"🔍 DEBUG: Converting American odds to implied probabilities:")
-    for team in teams:
-        if team in odds_dict:
-            american_odds = odds_dict[team]
+    if draw_outcomes:
+        print(f"🔍 DEBUG: Warning: {len(draw_outcomes)} draw outcomes could not be paired with games")
+    
+    devigged_odds = {}
+    
+    for game_id, game_teams in games.items():
+        print(f"🏈 Processing game: {game_id}")
+        
+        game_odds = {team: odds_dict[team] for team in game_teams if team in odds_dict}
+        
+        if len(game_odds) < 2:
+            print(f"   ⚠️ Skipping game {game_id}: insufficient odds data")
+            continue
+        
+        # Calculate implied probabilities for this game
+        implied_probs = {}
+        total_implied_prob = 0
+        
+        print(f"   🔍 Converting American odds to implied probabilities:")
+        for team in game_odds:
+            american_odds = game_odds[team]
             prob = american_to_implied_prob(american_odds)
             if prob is not None:
                 implied_probs[team] = prob
                 total_implied_prob += prob
-                print(f"   📊 {team}: {american_odds} → {prob:.4f} ({prob*100:.2f}%)")
+                print(f"      📊 {team}: {american_odds} → {prob:.4f} ({prob*100:.2f}%)")
+        
+        print(f"   📈 Total implied prob (with vig): {total_implied_prob:.4f} ({total_implied_prob*100:.2f}%)")
+        print(f"   🧮 Vig amount: {(total_implied_prob - 1.0):.4f} ({(total_implied_prob - 1.0)*100:.2f}%)")
+        
+        if total_implied_prob > 0:
+            print(f"   🔍 Normalizing probabilities and converting back to odds:")
+            for team in implied_probs:
+                normalized_prob = implied_probs[team] / total_implied_prob
+                decimal_odds = 1 / normalized_prob
+                devigged_odds[team] = decimal_odds
+                print(f"      🎯 {team}: prob {implied_probs[team]:.4f} → normalized {normalized_prob:.4f} → odds {decimal_odds:.4f}")
+            
+            total_normalized = sum(implied_probs[team] / total_implied_prob for team in implied_probs)
+            print(f"   ✅ Verification: normalized probabilities sum to {total_normalized:.4f}")
     
-    print(f"🔍 DEBUG: Total implied probability (with vig): {total_implied_prob:.4f} ({total_implied_prob*100:.2f}%)")
-    print(f"🔍 DEBUG: Vig amount: {(total_implied_prob - 1.0):.4f} ({(total_implied_prob - 1.0)*100:.2f}%)")
-    
-    devigged_odds = {}
-    if total_implied_prob > 0:
-        print(f"🔍 DEBUG: Normalizing probabilities and converting back to odds:")
-        for team in implied_probs:
-            normalized_prob = implied_probs[team] / total_implied_prob
-            decimal_odds = 1 / normalized_prob
-            devigged_odds[team] = decimal_odds
-            print(f"   🎯 {team}: prob {implied_probs[team]:.4f} → normalized {normalized_prob:.4f} → odds {decimal_odds:.4f}")
-    
-    print(f"🔍 DEBUG: Devigging complete. Processed {len(devigged_odds)} outcomes")
+    print(f"🔍 DEBUG: Devigging complete. Processed {len(devigged_odds)} outcomes across {len(games)} games")
     return devigged_odds
 
 
