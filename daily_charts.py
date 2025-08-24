@@ -105,11 +105,14 @@ class DailyChartsGenerator:
                        rotation=90, verticalalignment='top', fontsize=8,
                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7))
         
-        game_results = self.results_data[
-            (self.results_data['date'] == self.target_date) &
-            (self.results_data['home_team'].isin(game_data['team'].unique()) |
-             self.results_data['away_team'].isin(game_data['team'].unique()))
-        ]
+        if self.results_data.empty or 'date' not in self.results_data.columns:
+            game_results = pd.DataFrame()
+        else:
+            game_results = self.results_data[
+                (self.results_data['date'] == self.target_date) &
+                (self.results_data['home_team'].isin(game_data['team'].unique()) |
+                 self.results_data['away_team'].isin(game_data['team'].unique()))
+            ]
         
         if not game_results.empty:
             result = game_results.iloc[0]
