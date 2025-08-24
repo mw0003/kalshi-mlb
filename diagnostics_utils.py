@@ -63,10 +63,10 @@ def load_odds_timeseries_data(start_date: Optional[str] = None, end_date: Option
     if start_date or end_date:
         combined_df['timestamp'] = pd.to_datetime(combined_df['timestamp'])
         if start_date:
-            start_datetime = pd.to_datetime(start_date)
+            start_datetime = pd.to_datetime(start_date).tz_localize('UTC').tz_convert(combined_df['timestamp'].dt.tz)
             combined_df = combined_df[combined_df['timestamp'] >= start_datetime]
         if end_date:
-            end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1)
+            end_datetime = pd.to_datetime(end_date).tz_localize('UTC').tz_convert(combined_df['timestamp'].dt.tz) + pd.Timedelta(days=1)
             combined_df = combined_df[combined_df['timestamp'] < end_datetime]
     
     return combined_df
